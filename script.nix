@@ -6,8 +6,8 @@
 }:
 
 {
-  systemd.services.aliyunpan-snyc = {
-    description = "aliyunpan snyc";
+  systemd.services.aliyunpan-sync = {
+    description = "aliyunpan sync";
     wantedBy = [ "basic.target" ];
     # 脚本的绝对路径
     script = ''

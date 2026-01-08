@@ -20,8 +20,8 @@
     # Include the results of the hardware scan.
     ./hardware-configuration.nix
     ./script.nix
-
-    # <home-manager/nixos>
+    ./systemPackages.nix
+    ./home-manager.nix
   ];
 
   environment.variables = {
@@ -171,33 +171,9 @@
   # Allow unfree packages
   nixpkgs.config.allowUnfree = true;
 
-  # List packages installed in system profile. To search, run:
-  # $ nix search wget
-  environment.systemPackages = with pkgs; [
-    wget
-    git
-    unzip
-    localsend
-    keepassxc
-    fastfetch
-    podman
-    podman-compose
-    go
-    gcc
-    python314
-    nixfmt-rfc-style
-    nil
-    hugo
-    clash-verge-rev
-    chromium
-    vscode
-    zsh
-    rclone
-    rclone-ui
-  ];
 
-  services.flatpak.enable = true;
-  services.blueman.enable = true;
+
+  # services.flatpak.enable = true;
 
 
   # Some programs need SUID wrappers, can be configured further or are
