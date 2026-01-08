@@ -19,6 +19,7 @@
   imports = [
     # Include the results of the hardware scan.
     ./hardware-configuration.nix
+    ./script.nix
 
     # <home-manager/nixos>
   ];
@@ -175,6 +176,7 @@
   environment.systemPackages = with pkgs; [
     wget
     git
+    unzip
     localsend
     keepassxc
     fastfetch
@@ -190,6 +192,8 @@
     chromium
     vscode
     zsh
+    rclone
+    rclone-ui
   ];
 
   services.flatpak.enable = true;
