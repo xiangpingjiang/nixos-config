@@ -28,7 +28,7 @@ in
           settings = {
             # shell-integration = zsh;
             command = "/run/current-system/sw/bin/zsh";
-            # theme = "catppuccin-mocha";
+            theme = "Tomorrow Night Eighties";
             # font-size = 10;
             # keybind = [
             #   "ctrl+h=goto_split:left"

@@ -8,7 +8,6 @@
   # $ nix search wget
   environment.systemPackages = with pkgs; [
     wget
-    git
     unzip
     localsend
     keepassxc
@@ -21,14 +20,18 @@
     nixfmt-rfc-style
     nil
     hugo
-    clash-verge-rev
+    # clash-verge-rev
     chromium
     vscode
-    zsh
     rclone
     rclone-ui
 
     ghostty
+
+    amdgpu_top
+
+
+    kdePackages.kdenlive
 
 
   ];

@@ -12,7 +12,11 @@
   boot.initrd.kernelModules = [ ];
   boot.kernelModules = [ "kvm-amd" ];
   boot.extraModulePackages = [ ];
-  
+
+  hardware.graphics = {
+    enable = true;
+    enable32Bit = true;
+  };
 
 
   fileSystems."/" =
