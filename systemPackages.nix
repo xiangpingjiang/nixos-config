@@ -20,7 +20,6 @@
     nixfmt-rfc-style
     nil
     hugo
-    # clash-verge-rev
     chromium
     vscode
     rclone

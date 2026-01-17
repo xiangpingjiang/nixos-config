@@ -39,15 +39,6 @@
     firefox = {
       enable = true;
     };
-
-    
-    clash-verge = {
-      enable = true;
-      tunMode = true;
-    };
-
-
   };
-
 }
 
