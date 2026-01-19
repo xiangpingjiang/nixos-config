@@ -21,6 +21,7 @@ in
       # The state version is required and should stay at the version you
       # originally installed.
       home.stateVersion = "25.11";
+      nixpkgs.config.allowUnfree = true;
 
       programs = {
         ghostty = {
@@ -34,6 +35,39 @@ in
             #   "ctrl+h=goto_split:left"
             #   "ctrl+l=goto_split:right"
             # ];
+          };
+        };
+
+        vscode = {
+          enable = true;
+          profiles.xpj = {
+            extensions = with pkgs.vscode-extensions; [
+              jnoortheen.nix-ide
+              natqe.reload
+            ];
+            userSettings = {
+              "workbench.colorTheme" = "Visual Studio Light";
+            };
+          };
+          profiles.python = {
+            extensions = with pkgs.vscode-extensions; [
+              ms-python.debugpy
+              ms-python.vscode-pylance
+              ms-python.python
+              natqe.reload
+            ];
+            userSettings = {
+              "workbench.colorTheme" = "Visual Studio Light";
+            };
+          };
+          profiles.golang = {
+            extensions = with pkgs.vscode-extensions; [
+              natqe.reload
+              golang.go
+            ];
+            userSettings = {
+              "workbench.colorTheme" = "Visual Studio Light";
+            };
           };
         };
       };

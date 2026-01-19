@@ -21,7 +21,6 @@
     nil
     hugo
     chromium
-    vscode
     rclone
     rclone-ui
 
@@ -31,6 +30,7 @@
 
 
     kdePackages.kdenlive
+    lx-music-desktop
 
 
   ];

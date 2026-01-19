@@ -3,24 +3,27 @@
 }:
 
 {
-    networking.hostName = "nixos"; # Define your hostname.
-  # networking.wireless.enable = true;  # Enables wireless support via wpa_supplicant.
+  networking = {
+    hostName = "nixos"; # Define your hostname.
+    # wireless.enable = true;  # Enables wireless support via wpa_supplicant.
 
-  # Configure network proxy if necessary
-  # networking.proxy.default = "http://user:password@proxy:port/";
-  # networking.proxy.noProxy = "127.0.0.1,localhost,internal.domain";
+    networkmanager.enable = true;
+    firewall = {
+       # localsend use 53317
+      allowedTCPPorts = [ 53317 ];
+      allowedUDPPorts = [ 53317 ];
+      # enable = false;
+      trustedInterfaces = [ "Mihomo" ];
+      checkReversePath = false;
+    };
 
-  # Enable networking
-  networking.networkmanager.enable = true;
-  # Open ports in the firewall.
-  # localsend use 53317
-  networking.firewall.allowedTCPPorts = [ 53317 ];
-  networking.firewall.allowedUDPPorts = [ 53317 ];
-  # Or disable the firewall altogether.
-  # networking.firewall.enable = false;
-  networking.firewall.trustedInterfaces = [ "Mihomo" ];
-  networking.firewall.checkReversePath = false;
-
-
+    # proxy = {
+    #   default = "http://127.0.0.1:7897";
+    #   httpsProxy = "http://127.0.0.1:7897";
+    #   httpProxy = "http://127.0.0.1:7897";
+    #   allProxy = "http://127.0.0.1:7897";
+    #   noProxy = "127.0.0.1,localhost";
+    # };
+  };
 
 }

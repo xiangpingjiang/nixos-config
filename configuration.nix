@@ -11,10 +11,14 @@
 
 {
 
-  nix.settings.substituters = lib.mkForce [
-    "https://mirrors.cernet.edu.cn/nix-channels/store"
-    "https://mirrors.ustc.edu.cn/nix-channels/store"
-  ];
+nix.settings.substituters = [
+  # 优先使用国内镜像
+  "https://mirrors.cernet.edu.cn/nix-channels/store"
+  "https://mirrors.ustc.edu.cn/nix-channels/store"
+  
+  # 官方缓存作为后备
+  "https://cache.nixos.org"
+];
 
   imports = [
     # Include the results of the hardware scan.
