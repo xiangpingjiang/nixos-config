@@ -1,7 +1,4 @@
 {
-  config,
-  pkgs,
-  lib,
   ...
 }:
 
@@ -47,6 +44,14 @@ in
             ];
             userSettings = {
               "workbench.colorTheme" = "Visual Studio Light";
+              "nix.enableLanguageServer" = true;
+              "nix.serverPath" = "nil";
+              "nix.serverSettings.nil" = {
+                "formatting" = {
+                  "command" = [ "nixfmt" ];
+                };
+
+              };
             };
           };
           profiles.python = {
