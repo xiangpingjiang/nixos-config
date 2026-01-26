@@ -37,7 +37,7 @@ in
 
         vscode = {
           enable = true;
-          profiles.xpj = {
+          profiles.nix = {
             extensions = with pkgs.vscode-extensions; [
               jnoortheen.nix-ide
               natqe.reload
@@ -74,6 +74,10 @@ in
               "workbench.colorTheme" = "Visual Studio Light";
             };
           };
+        };
+
+        obsidian = {
+          enable = true;
         };
       };
     };

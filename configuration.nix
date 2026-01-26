@@ -36,6 +36,13 @@ nix.settings.substituters = [
     GOPROXY = "https://goproxy.cn,direct";
   };
 
+  environment.sessionVariables = {
+    QT_IM_MODULE = "fcitx";
+    GTK_IM_MODULE = "fcitx";
+    XMODIFIERS = "@im=fcitx";
+  };
+
+
   # Bootloader.
   boot.loader.systemd-boot.enable = true;
   boot.loader.efi.canTouchEfiVariables = true;

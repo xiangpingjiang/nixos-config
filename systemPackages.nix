@@ -32,6 +32,9 @@
     kdePackages.kdenlive
     lx-music-desktop
 
+    nix-init
+    aliyunpan
+
 
   ];
 
