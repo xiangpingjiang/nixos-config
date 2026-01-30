@@ -9,14 +9,14 @@
 
 {
 
-nix.settings.substituters = [
-  # 优先使用国内镜像
-  "https://mirrors.cernet.edu.cn/nix-channels/store"
-  "https://mirrors.ustc.edu.cn/nix-channels/store"
-  
-  # 官方缓存作为后备
-  "https://cache.nixos.org"
-];
+  nix.settings.substituters = [
+    # 优先使用国内镜像
+    "https://mirrors.cernet.edu.cn/nix-channels/store"
+    "https://mirrors.ustc.edu.cn/nix-channels/store"
+
+    # 官方缓存作为后备
+    "https://cache.nixos.org"
+  ];
 
   imports = [
     # Include the results of the hardware scan.
@@ -42,15 +42,12 @@ nix.settings.substituters = [
     XMODIFIERS = "@im=fcitx";
   };
 
-
   # Bootloader.
   boot.loader.systemd-boot.enable = true;
   boot.loader.efi.canTouchEfiVariables = true;
 
   # Use latest kernel.
   boot.kernelPackages = pkgs.linuxPackages_latest;
-
-
 
   # Set your time zone.
   time.timeZone = "Asia/Shanghai";
@@ -129,23 +126,12 @@ nix.settings.substituters = [
       "networkmanager"
       "wheel"
     ];
-    packages = with pkgs; [
-      kdePackages.kate
-      #  thunderbird
-    ];
-
   };
-
-
-
 
   # Allow unfree packages
   nixpkgs.config.allowUnfree = true;
 
-
-
   # services.flatpak.enable = true;
-
 
   # Some programs need SUID wrappers, can be configured further or are
   # started in user sessions.
@@ -160,8 +146,6 @@ nix.settings.substituters = [
   # Enable the OpenSSH daemon.
   # services.openssh.enable = true;
 
-
-
   # This value determines the NixOS release from which the default
   # settings for stateful data, like file locations and database versions
   # on your system were taken. It‘s perfectly fine and recommended to leave
@@ -169,7 +153,7 @@ nix.settings.substituters = [
   # Before changing this value read the documentation for this option
   # (e.g. man configuration.nix or on https://nixos.org/nixos/options.html).
   system.stateVersion = "25.11"; # Did you read the comment?
-  
+
   # 字体问题
   fonts = {
     packages = with pkgs; [
@@ -188,6 +172,12 @@ nix.settings.substituters = [
         serif = [ "Noto Serif CJK SC" ];
       };
     };
+  };
+
+  nix.gc = {
+    automatic = true;
+    dates = "weekly";
+    options = "--delete-older-than 10d";
   };
 
 }

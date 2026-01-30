@@ -24,7 +24,6 @@
     rclone
     rclone-ui
 
-    ghostty
 
     amdgpu_top
 
@@ -34,6 +33,13 @@
 
     nix-init
     aliyunpan
+    telegram-desktop
+    nixpkgs-review
+    gh
+
+    feishu
+    wemeet
+
 
 
   ];
