@@ -3,7 +3,7 @@
 }:
 
 let
-  home-manager = builtins.fetchTarball "https://github.com/nix-community/home-manager/archive/release-25.11.tar.gz";
+  home-manager = builtins.fetchTarball "https://github.com/nix-community/home-manager/archive/master.tar.gz";
 in
 {
   imports = [
@@ -17,7 +17,7 @@ in
 
       # The state version is required and should stay at the version you
       # originally installed.
-      home.stateVersion = "25.11";
+      home.stateVersion = "26.05";
       nixpkgs.config.allowUnfree = true;
 
       programs = {
@@ -80,5 +80,15 @@ in
           enable = true;
         };
       };
+
+      services = {
+        podman = {
+          enable = true;
+          settings.policy = {
+            default = [ { type = "insecureAcceptAnything"; } ];
+          };
+        };
+      };
+
     };
 }

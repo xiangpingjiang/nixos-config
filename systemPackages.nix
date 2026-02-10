@@ -12,12 +12,11 @@
     localsend
     keepassxc
     fastfetch
-    podman
     podman-compose
     go
     gcc
     python314
-    nixfmt-rfc-style
+    nixfmt
     nil
     hugo
     chromium
@@ -28,7 +27,7 @@
     amdgpu_top
 
 
-    kdePackages.kdenlive
+    # kdePackages.kdenlive
     lx-music-desktop
 
     nix-init
@@ -40,6 +39,9 @@
     feishu
     wemeet
 
+    wechat
+    insomnia
+    devenv
 
 
   ];
