@@ -4,6 +4,7 @@ redir-port: 7892
 mixed-port: 7897
 external-controller: 127.0.0.1:9097
 allow-lan: false
+unified-delay: true
 mode: Rule
 log-level: info
 ipv6: false

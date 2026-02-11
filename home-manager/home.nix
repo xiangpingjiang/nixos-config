@@ -20,6 +20,10 @@ in
       home.stateVersion = "26.05";
       nixpkgs.config.allowUnfree = true;
 
+    imports = [
+      ./plasma.nix
+    ];
+
       programs = {
         ghostty = {
           enable = true;

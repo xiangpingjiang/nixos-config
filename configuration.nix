@@ -23,7 +23,7 @@
     ./hardware-configuration.nix
     ./script.nix
     ./systemPackages.nix
-    ./home-manager.nix
+    ./home-manager/home.nix
     ./services.nix
     ./programs.nix
     ./networking.nix
