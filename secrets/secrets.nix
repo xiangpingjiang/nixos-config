@@ -1,0 +1,14 @@
+let
+  my_user = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICzxijLWHR3Xpf1r/xcmqhCkVUh5F62VbBNLdNuDE7oF xpj@nixos";
+in
+{
+  "rclone_kp_cst.age" = {
+    publicKeys = [ my_user ];
+    armor = true;
+  };
+
+  "restic_repository.age" = {
+    publicKeys = [ my_user ];
+    armor = true;
+  };
+}

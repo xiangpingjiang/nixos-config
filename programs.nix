@@ -38,6 +38,10 @@
     firefox = {
       enable = true;
     };
+    steam = {
+      enable = true;
+      protontricks.enable = true;
+    };
   };
 }
 

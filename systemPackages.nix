@@ -20,8 +20,6 @@
     nil
     hugo
     chromium
-    rclone
-    rclone-ui
 
 
     amdgpu_top
@@ -42,8 +40,22 @@
     wechat
     insomnia
     devenv
+    (callPackage "${builtins.fetchTarball "https://github.com/ryantm/agenix/archive/main.tar.gz"}/pkgs/agenix.nix" {})
+
 
 
   ];
+
+  environment.plasma6.excludePackages = with pkgs.kdePackages; [
+    kate
+    konsole
+  ];
+
+  
+
+  # virtualisation.waydroid.enable = true;
+  # virtualisation.waydroid.package = pkgs.waydroid-nftables;
+  # networking.nftables.enable = true;
+
 
 }

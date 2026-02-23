@@ -22,6 +22,9 @@ in
 
     imports = [
       ./plasma.nix
+      ./rclone.nix
+      "${builtins.fetchTarball "https://github.com/ryantm/agenix/archive/main.tar.gz"}/modules/age-home.nix"
+      ./secrets.nix
     ];
 
       programs = {

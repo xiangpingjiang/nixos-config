@@ -1,6 +1,6 @@
 {
 
-  ...
+  pkgs,...
 }:
 
 let
@@ -70,6 +70,22 @@ in
       }
     ];
 
+    workspace = {
+      lookAndFeel = "org.kde.breeze.desktop";
+      iconTheme = "Breeze Light";
+      cursor = {
+        theme = "Breeze Dark";
+        size = 30;
+      };
+      wallpaper = "${pkgs.kdePackages.plasma-workspace-wallpapers}/share/wallpapers/Autumn/contents/images/2560x1440.jpg";
+    };
+
+    kscreenlocker = {
+      autoLock = true;
+      timeout = 3;
+      appearance.wallpaper = "${pkgs.kdePackages.plasma-workspace-wallpapers}/share/wallpapers/Path/contents/images/2560x1440.jpg";
+    };
+
 
     panels = [
       # Windows-like panel at the bottom
@@ -78,7 +94,19 @@ in
         widgets = [
           "org.kde.plasma.kickoff"
           "org.kde.plasma.pager"
-          "org.kde.plasma.icontasks"
+          {
+          iconTasks = {
+            launchers = [
+              "applications:systemsettings.desktop"
+              "applications:org.kde.dolphin.desktop"
+              "applications:com.mitchellh.ghostty.desktop"
+              "applications:org.kde.plasma-systemmonitor.desktop"
+              "applications:code.desktop"
+              "applications:chromium-browser.desktop"
+            ];
+            appearance.showTooltips = true;
+          };
+        }
           "org.kde.plasma.marginsseparator"
           "org.kde.plasma.systemtray"
           "org.kde.plasma.digitalclock"
@@ -417,19 +445,7 @@ in
         "/run/current-system/sw/share/applications/fcitx5-wayland-launcher.desktop";
       kwinrc."org.kde.kdecoration2".BorderSize = "None";
       kwinrc."org.kde.kdecoration2".BorderSizeAuto = false;
-      kwinrulesrc.General.count = 2;
-      # kwinrulesrc.General.rules = "c445401f-6371-4f81-8144-8f3390e29dd0,f6b37f8e-8748-48fa-a7fb-3a23856f900d";
-      kwinrulesrc.c445401f-6371-4f81-8144-8f3390e29dd0.Description = "Application settings for localsend_app";
-      kwinrulesrc.c445401f-6371-4f81-8144-8f3390e29dd0.desktopfile = "LocalSend";
-      kwinrulesrc.c445401f-6371-4f81-8144-8f3390e29dd0.desktopfilerule = 2;
-      kwinrulesrc.c445401f-6371-4f81-8144-8f3390e29dd0.wmclass = "localsend_app";
-      kwinrulesrc.c445401f-6371-4f81-8144-8f3390e29dd0.wmclassmatch = 1;
-      kwinrulesrc.f6b37f8e-8748-48fa-a7fb-3a23856f900d.Description = "Application settings for Insomnia";
-      kwinrulesrc.f6b37f8e-8748-48fa-a7fb-3a23856f900d.desktopfile = "insomnia";
-      kwinrulesrc.f6b37f8e-8748-48fa-a7fb-3a23856f900d.desktopfilerule = 2;
-      kwinrulesrc.f6b37f8e-8748-48fa-a7fb-3a23856f900d.wmclass = "insomnia Insomnia";
-      kwinrulesrc.f6b37f8e-8748-48fa-a7fb-3a23856f900d.wmclasscomplete = true;
-      kwinrulesrc.f6b37f8e-8748-48fa-a7fb-3a23856f900d.wmclassmatch = 1;
+
       kxkbrc.Layout.DisplayNames = "";
       kxkbrc.Layout.LayoutList = "us";
       kxkbrc.Layout.Use = true;
@@ -437,7 +453,7 @@ in
       plasma-localerc.Formats.LANG = "en_HK.UTF-8";
       plasmanotifyrc."Applications/chromium-browser".Seen = true;
       plasmanotifyrc."Applications/org.telegram.desktop".Seen = true;
-      plasmarc.Wallpapers.usersWallpapers = "";
+
       spectaclerc.ImageSave.lastImageSaveLocation = "file:///home/xpj/Pictures/Screenshots/Screenshot_20260121_171913.png";
       spectaclerc.ImageSave.translatedScreenshotsFolder = "Screenshots";
       spectaclerc.VideoSave.translatedScreencastsFolder = "Screencasts";

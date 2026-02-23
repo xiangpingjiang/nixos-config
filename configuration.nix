@@ -21,12 +21,14 @@
   imports = [
     # Include the results of the hardware scan.
     ./hardware-configuration.nix
-    ./script.nix
+    ./systemd.services.nix
     ./systemPackages.nix
     ./home-manager/home.nix
     ./services.nix
     ./programs.nix
     ./networking.nix
+    "${builtins.fetchTarball "https://github.com/ryantm/agenix/archive/main.tar.gz"}/modules/age.nix"
+    ./secrets.nix
   ];
 
   environment.variables = {
