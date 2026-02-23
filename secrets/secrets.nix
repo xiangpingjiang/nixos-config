@@ -7,6 +7,11 @@ in
     armor = true;
   };
 
+  "rclone_kp_nutstore.age" = {
+    publicKeys = [ my_user ];
+    armor = true;
+  };
+
   "restic_repository.age" = {
     publicKeys = [ my_user ];
     armor = true;

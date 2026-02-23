@@ -20,6 +20,7 @@
     nil
     hugo
     chromium
+    restic # to control snapshots
 
 
     amdgpu_top

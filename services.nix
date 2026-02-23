@@ -22,7 +22,27 @@ services.mihomo = {
   services.restic.backups = {
     webdav-backup = {
       paths = [ "/home/xpj/Documents/sync/kp/" ];
-      repository = "rclone:kp_cst:/kp/"; # 'kp_cst' matches rclone config name
+      repository = "rclone:kp_cst:/kp/"; # 'kp_cst' matches rclone config name, kp created before
+      
+      # Automation settings
+      initialize = true;
+      passwordFile = config.age.secrets.restic_repository.path;
+      timerConfig = {
+        OnCalendar="*:0/1";
+      };
+      rcloneConfigFile = "/home/xpj/.config/rclone/rclone.conf";
+      
+      # Maintain backups
+      pruneOpts = [
+        "--keep-daily 7"
+        "--keep-weekly 4"
+        "--keep-monthly 3"
+      ];
+    };
+
+    webdav-backup-nutstore = {
+      paths = [ "/home/xpj/Documents/sync/kp/" ];
+      repository = "rclone:kp_nutstore:/kp/"; # 'kp_cst' matches rclone config name,  kp created before
       
       # Automation settings
       initialize = true;
