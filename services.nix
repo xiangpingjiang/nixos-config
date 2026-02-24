@@ -10,7 +10,6 @@ services.mihomo = {
   enable = true;
   tunMode = true;
   webui = pkgs.metacubexd;
-  #todo , not aliyunpan_config.json for config file
   configFile = "/home/xpj/Projects/nixos-config/config/mihomo.yaml";
 };
 
@@ -82,4 +81,6 @@ services.mihomo = {
   };
 
 
+
+  services.flatpak.enable = true;
 }

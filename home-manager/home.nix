@@ -20,12 +20,13 @@ in
       home.stateVersion = "26.05";
       nixpkgs.config.allowUnfree = true;
 
-    imports = [
-      ./plasma.nix
-      ./rclone.nix
-      "${builtins.fetchTarball "https://github.com/ryantm/agenix/archive/main.tar.gz"}/modules/age-home.nix"
-      ./secrets.nix
-    ];
+      imports = [
+        ./plasma.nix
+        ./rclone.nix
+        "${builtins.fetchTarball "https://github.com/ryantm/agenix/archive/main.tar.gz"}/modules/age-home.nix"
+        ./secrets.nix
+        ./vscode.nix
+      ];
 
       programs = {
         ghostty = {
@@ -39,47 +40,6 @@ in
             #   "ctrl+h=goto_split:left"
             #   "ctrl+l=goto_split:right"
             # ];
-          };
-        };
-
-        vscode = {
-          enable = true;
-          profiles.nix = {
-            extensions = with pkgs.vscode-extensions; [
-              jnoortheen.nix-ide
-              natqe.reload
-            ];
-            userSettings = {
-              "workbench.colorTheme" = "Visual Studio Light";
-              "nix.enableLanguageServer" = true;
-              "nix.serverPath" = "nil";
-              "nix.serverSettings.nil" = {
-                "formatting" = {
-                  "command" = [ "nixfmt" ];
-                };
-
-              };
-            };
-          };
-          profiles.python = {
-            extensions = with pkgs.vscode-extensions; [
-              ms-python.debugpy
-              ms-python.vscode-pylance
-              ms-python.python
-              natqe.reload
-            ];
-            userSettings = {
-              "workbench.colorTheme" = "Visual Studio Light";
-            };
-          };
-          profiles.golang = {
-            extensions = with pkgs.vscode-extensions; [
-              natqe.reload
-              golang.go
-            ];
-            userSettings = {
-              "workbench.colorTheme" = "Visual Studio Light";
-            };
           };
         };
 

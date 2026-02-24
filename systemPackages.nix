@@ -36,7 +36,6 @@
     gh
 
     feishu
-    wemeet
 
     wechat
     insomnia
