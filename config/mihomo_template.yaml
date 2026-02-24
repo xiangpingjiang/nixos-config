@@ -21,7 +21,7 @@ tun:
 proxy-providers:
   mesl_providers:
     type: http
-    url: https://em.mesl.cloud/ems/get?token=xxx
+    url: 
     interval: 3600
     proxy: DIRECT
     header:
