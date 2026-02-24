@@ -19,7 +19,7 @@ tun:
   strict-route: true
   enable: false
 proxy-providers:
-  mesl:
+  mesl_providers:
     type: http
     url: https://em.mesl.cloud/ems/get?token=xxx
     interval: 3600
@@ -27,6 +27,12 @@ proxy-providers:
     header:
       User-Agent:
       - clash
+proxy-groups:
+  - name: MESL
+    type: select
+    use:
+      - mesl_providers  # 必须写这个！
+    proxies: []  # 可选：显式空数组，避免默认值干扰（非必需）
 dns:
     enable: true
     listen: '0.0.0.0:1053'
@@ -136,7 +142,7 @@ rules:
   - DOMAIN,yacd.haishan.me,DIRECT
   - RULE-SET,private,DIRECT
   - RULE-SET,reject,REJECT
-  - RULE-SET,tld-not-cn,PROXY
-  - RULE-SET,gfw,PROXY
-  - RULE-SET,telegramcidr,PROXY
+  - RULE-SET,tld-not-cn,MESL
+  - RULE-SET,gfw,MESL
+  - RULE-SET,telegramcidr,MESL
   - MATCH,DIRECT
