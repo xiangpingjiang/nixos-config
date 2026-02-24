@@ -21,7 +21,6 @@
   imports = [
     # Include the results of the hardware scan.
     ./hardware-configuration.nix
-    ./systemd.services.nix
     ./systemPackages.nix
     ./home-manager/home.nix
     ./services.nix

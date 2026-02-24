@@ -64,7 +64,7 @@ in
         apply = {
           desktopfile = {
             value = "LocalSend";
-            apply = "force";
+            apply = "initially";
           };
         };
       }
