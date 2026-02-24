@@ -12,6 +12,11 @@ in
     armor = true;
   };
 
+  "rclone_kp_infini.age" = {
+    publicKeys = [ my_user ];
+    armor = true;
+  };
+
   "restic_repository.age" = {
     publicKeys = [ my_user ];
     armor = true;

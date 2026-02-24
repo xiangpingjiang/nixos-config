@@ -11,7 +11,7 @@
           type = "webdav";
           url = "https://data.cstcloud.cn/dav"; # WebDAV 服务器地址
           vendor = "other";
-          user = "xpj1";
+          user = "rclone_kp";
         };
         secrets = {  pass = config.age.secrets.rclone_kp_cst.path;};
       };
@@ -23,6 +23,16 @@
           user = "825717414@qq.com";
         };
         secrets = {  pass = config.age.secrets.rclone_kp_nutstore.path;};
+      };
+
+      "kp_infini" = {
+        config = {
+          type = "webdav";
+          url = "https://hakata.infini-cloud.net/dav/"; # WebDAV 服务器地址
+          vendor = "other";
+          user = "cola_xiang";
+        };
+        secrets = {  pass = config.age.secrets.rclone_kp_infini.path;};
       };
     };
   };
