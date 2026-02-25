@@ -1,86 +1,88 @@
-
 {
   pkgs,
   config,
   ...
 }:
-
+let
+  resticBackupsBaseSettings = {
+    # Automation settings
+    initialize = true;
+    passwordFile = config.age.secrets.restic_repository.path;
+    rcloneConfigFile = "/home/xpj/.config/rclone/rclone.conf";
+    # Maintain backups
+    pruneOpts = [
+      "--keep-daily 7" # 保留最近 7 天的每日备份
+      "--keep-weekly 4" # 保留最近 4 周的每周备份
+      "--keep-monthly 3" # 保留最近 3 个月的每月备份
+    ];
+  };
+in
 {
-services.mihomo = {
-  enable = true;
-  tunMode = true;
-  webui = pkgs.metacubexd;
-  configFile = config.age.secrets.mihomo_config.path;
-};
-
-
-  # 测试后发现auto-cpufreq效果不如 ppd
-  # services.power-profiles-daemon.enable = true;
-  # services.auto-cpufreq.enable = true;
+  services.mihomo = {
+    enable = true;
+    tunMode = true;
+    webui = pkgs.metacubexd;
+    configFile = config.age.secrets.mihomo_config.path;
+  };
 
   services.restic.backups = {
-    webdav-backup = {
+    webdav-backup = resticBackupsBaseSettings // {
       paths = [ "/home/xpj/Documents/sync/kp/" ];
       repository = "rclone:kp_cst:/kp/"; # 'kp_cst' matches rclone config name, kp created before
-      
-      # Automation settings
-      initialize = true;
-      passwordFile = config.age.secrets.restic_repository.path;
       timerConfig = {
-        OnCalendar="*:0/3";  # *：代表 “每一小时”（小时维度不限制） :：分隔小时和分钟 0/3：代表 “从第 0 分钟开始，每隔 3 分钟”
+        OnCalendar = "*:0/3"; # *：代表 “每一小时”（小时维度不限制） :：分隔小时和分钟 0/3：代表 “从第 0 分钟开始，每隔 3 分钟”
       };
-      rcloneConfigFile = "/home/xpj/.config/rclone/rclone.conf";
-      
-      # Maintain backups 
-      pruneOpts = [
-        "--keep-daily 7" # 保留最近 7 天的每日备份
-        "--keep-weekly 4" # 保留最近 4 周的每周备份
-        "--keep-monthly 3" # 保留最近 3 个月的每月备份
-      ];
     };
 
-    webdav-backup-nutstore = {
+    webdav-backup-nutstore = resticBackupsBaseSettings // {
       paths = [ "/home/xpj/Documents/sync/kp/" ];
-      repository = "rclone:kp_nutstore:/kp/"; # 'kp_cst' matches rclone config name,  kp created before
-      
-      # Automation settings
-      initialize = true;
-      passwordFile = config.age.secrets.restic_repository.path;
+      repository = "rclone:kp_nutstore:/kp/";
       timerConfig = {
-        OnCalendar="*:3/5";
+        OnCalendar = "*:3/5";
       };
-      rcloneConfigFile = "/home/xpj/.config/rclone/rclone.conf";
-      
-      # Maintain backups
-      pruneOpts = [
-        "--keep-daily 7"
-        "--keep-weekly 4"
-        "--keep-monthly 3"
-      ];
     };
 
-    webdav-backup-infini = {
+    webdav-backup-infini = resticBackupsBaseSettings // {
       paths = [ "/home/xpj/Documents/sync/kp/" ];
       repository = "rclone:kp_infini:/kp/";
-      
-      # Automation settings
-      initialize = true;
-      passwordFile = config.age.secrets.restic_repository.path;
       timerConfig = {
-        OnCalendar="*:2/3";  # *：代表 “每一小时”（小时维度不限制） :：分隔小时和分钟 2/3：代表 “从第 2 分钟开始，每隔 3 分钟”
+        OnCalendar = "*:2/3"; # *：代表 “每一小时”（小时维度不限制） :：分隔小时和分钟 2/3：代表 “从第 2 分钟开始，每隔 3 分钟”
       };
-      rcloneConfigFile = "/home/xpj/.config/rclone/rclone.conf";
-      
-      # Maintain backups
-      pruneOpts = [
-        "--keep-daily 7"
-        "--keep-weekly 4"
-        "--keep-monthly 3"
-      ];
     };
   };
 
+  # Enable the X11 windowing system.
+  # You can disable this if you're only using the Wayland session.
+  # services.xserver.enable = true;
 
+  # Enable the KDE Plasma Desktop Environment.
+  services.displayManager.sddm.enable = true;
+  services.desktopManager.plasma6.enable = true;
+
+  # Configure keymap in X11
+  # services.xserver.xkb = {
+  #   layout = "cn";
+  #   variant = "";
+  # };
+
+  # Enable sound with pipewire.
+  services.pulseaudio.enable = false;
+  security.rtkit.enable = true;
+  services.pipewire = {
+    enable = true;
+    alsa.enable = true;
+    alsa.support32Bit = true;
+    pulse.enable = true;
+    # If you want to use JACK applications, uncomment this
+    #jack.enable = true;
+
+    # use the example session manager (no others are packaged yet so this is enabled by default,
+    # no need to redefine it in your config for now)
+    #media-session.enable = true;
+  };
+
+  # Enable touchpad support (enabled default in most desktopManager).
+  # services.xserver.libinput.enable = true;
 
   services.flatpak.enable = true;
 }

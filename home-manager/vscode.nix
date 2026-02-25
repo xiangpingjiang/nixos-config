@@ -10,6 +10,12 @@ let
       rev = "c22e7adea9adec98b3dc79be954ee17d56a232bd";
     }
   );
+
+  # 定义所有 profile 共用的基础配置
+  vscodeBaseSettings = {
+    "workbench.colorTheme" = "Visual Studio Light";
+    "terminal.integrated.defaultProfile.linux" = "zsh";
+  };
 in
 {
 
@@ -23,8 +29,7 @@ in
         jnoortheen.nix-ide
         natqe.reload
       ];
-      userSettings = {
-        "workbench.colorTheme" = "Visual Studio Light";
+      userSettings = vscodeBaseSettings // {
         "nix.enableLanguageServer" = true;
         "nix.serverPath" = "nil";
         "nix.serverSettings.nil" = {
@@ -42,28 +47,21 @@ in
         ms-python.python
         natqe.reload
       ];
-      userSettings = {
-        "workbench.colorTheme" = "Visual Studio Light";
-      };
+      userSettings = vscodeBaseSettings;
     };
     profiles.golang = {
       extensions = with pkgs.vscode-extensions; [
         natqe.reload
         golang.go
       ];
-      userSettings = {
-        "workbench.colorTheme" = "Visual Studio Light";
-      };
+      userSettings = vscodeBaseSettings;
     };
     profiles.typst = {
       extensions = with pkgs.vscode-marketplace; [
         natqe.reload
         myriad-dreamin.tinymist
-
       ];
-      userSettings = {
-        "workbench.colorTheme" = "Visual Studio Light";
-      };
+      userSettings = vscodeBaseSettings;
     };
   };
 }
