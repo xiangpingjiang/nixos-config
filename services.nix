@@ -10,7 +10,7 @@ services.mihomo = {
   enable = true;
   tunMode = true;
   webui = pkgs.metacubexd;
-  configFile = "/home/xpj/Projects/nixos-config/config/mihomo.yaml";
+  configFile = config.age.secrets.mihomo_config.path;
 };
 
 
