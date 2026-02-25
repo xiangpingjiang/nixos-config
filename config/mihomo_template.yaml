@@ -30,9 +30,26 @@ proxy-providers:
 proxy-groups:
   - name: MESL
     type: select
+    proxies:
+    - MESL_low
+    - MESL_no_low
+
+  - name: MESL_low
+    type: url-test
     use:
-      - mesl_providers  # 必须写这个！
-    proxies: []  # 可选：显式空数组，避免默认值干扰（非必需）
+      - mesl_providers
+    url: 'https://www.gstatic.com/generate_204'
+    interval: 300
+    filter: '0\.3X'
+
+  - name: MESL_no_low
+    type: url-test
+    use:
+      - mesl_providers
+    url: 'https://www.gstatic.com/generate_204'
+    interval: 300
+    exclude-filter: '0\.3X'
+
 dns:
     enable: true
     listen: '0.0.0.0:1053'
