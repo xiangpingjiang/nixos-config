@@ -19,7 +19,6 @@
     nixfmt
     nil
     hugo
-    chromium
     restic # to control snapshots
 
 

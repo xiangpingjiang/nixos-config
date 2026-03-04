@@ -46,6 +46,16 @@ in
         obsidian = {
           enable = true;
         };
+        chromium = {
+          enable = true;
+          # package = oldPkgs.chromium;
+          commandLineArgs = [
+            # https://fcitx-im.org/wiki/Using_Fcitx_5_on_Wayland#KDE_Plasma
+            "--enable-features=UseOzonePlatform"
+            "--ozone-platform=wayland"
+            "--enable-wayland-ime"
+          ];
+        };
       };
 
       services = {
@@ -56,6 +66,9 @@ in
           };
         };
       };
+
+      home.packages = with pkgs;[
+        gitleaks];
 
     };
 }

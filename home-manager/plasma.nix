@@ -1,6 +1,7 @@
 {
 
-  pkgs,...
+  pkgs,
+  ...
 }:
 
 let
@@ -86,7 +87,6 @@ in
       appearance.wallpaper = "${pkgs.kdePackages.plasma-workspace-wallpapers}/share/wallpapers/Path/contents/images/2560x1440.jpg";
     };
 
-
     panels = [
       # Windows-like panel at the bottom
       {
@@ -95,20 +95,38 @@ in
           "org.kde.plasma.kickoff"
           "org.kde.plasma.pager"
           {
-          iconTasks = {
-            launchers = [
-              "applications:systemsettings.desktop"
-              "applications:org.kde.dolphin.desktop"
-              "applications:com.mitchellh.ghostty.desktop"
-              "applications:org.kde.plasma-systemmonitor.desktop"
-              "applications:code.desktop"
-              "applications:chromium-browser.desktop"
-            ];
-            appearance.showTooltips = true;
-          };
-        }
+            iconTasks = {
+              launchers = [
+                "applications:systemsettings.desktop"
+                "applications:org.kde.dolphin.desktop"
+                "applications:com.mitchellh.ghostty.desktop"
+                "applications:org.kde.plasma-systemmonitor.desktop"
+                "applications:code.desktop"
+                "applications:chromium-browser.desktop"
+              ];
+              appearance.showTooltips = true;
+            };
+          }
           "org.kde.plasma.marginsseparator"
-          "org.kde.plasma.systemtray"
+          {
+            # cat ~/.config/plasma-org.kde.plasma.desktop-appletsrc
+            systemTray = {
+              items = {
+                showAll = false;
+                shown = [
+                  "org.kde.plasma.notifications"
+                  "org.kde.plasma.networkmanagement"
+                  "org.kde.plasma.bluetooth"
+                  "org.kde.plasma.volume"
+                  "org.kde.plasma.brightness"
+                  "org.kde.plasma.battery"
+                  "org.kde.plasma.manage-inputmethod"
+                  "org.kde.plasma.keyboardindicator"
+                  "Fcitx"
+                ];
+              };
+            };
+          }
           "org.kde.plasma.digitalclock"
           "org.kde.plasma.showdesktop"
         ];
@@ -459,6 +477,5 @@ in
       spectaclerc.VideoSave.translatedScreencastsFolder = "Screencasts";
     };
   };
-
 
 }
