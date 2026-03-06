@@ -22,11 +22,9 @@
     # Include the results of the hardware scan.
     ./hardware-configuration.nix
     ./systemPackages.nix
-    ./home-manager/home.nix
     ./services.nix
     ./programs.nix
     ./networking.nix
-    "${builtins.fetchTarball "https://github.com/ryantm/agenix/archive/main.tar.gz"}/modules/age.nix"
     ./secrets.nix
   ];
 
@@ -81,8 +79,6 @@
     ];
   };
 
-
-
   # Define a user account. Don't forget to set a password with ‘passwd’.
   users.users.xpj = {
     isNormalUser = true;
@@ -96,8 +92,6 @@
   # Allow unfree packages
   nixpkgs.config.allowUnfree = true;
 
-  
-
   # Some programs need SUID wrappers, can be configured further or are
   # started in user sessions.
   # programs.mtr.enable = true;
@@ -105,8 +99,6 @@
   #   enable = true;
   #   enableSSHSupport = true;
   # };
-
-
 
   # This value determines the NixOS release from which the default
   # settings for stateful data, like file locations and database versions
@@ -142,5 +134,9 @@
     dates = "weekly";
     options = "--delete-older-than 10d";
   };
+  nix.settings.experimental-features = [
+    "nix-command"
+    "flakes"
+  ];
 
 }

@@ -4,14 +4,9 @@
   ...
 }:
 
-let
-  plasma-manager = builtins.fetchTarball "https://github.com/nix-community/plasma-manager/archive/trunk.tar.gz";
-in
+
 {
 
-  imports = [
-    (import "${plasma-manager}/modules")
-  ];
   programs.plasma = {
     enable = true;
     window-rules = [

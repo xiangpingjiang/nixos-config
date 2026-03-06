@@ -19,7 +19,6 @@
     nixfmt
     nil
     hugo
-    restic # to control snapshots
 
 
     amdgpu_top
@@ -29,7 +28,6 @@
     lx-music-desktop
 
     nix-init
-    aliyunpan
     telegram-desktop
     nixpkgs-review
     gh
@@ -39,7 +37,6 @@
     wechat
     insomnia
     devenv
-    (callPackage "${builtins.fetchTarball "https://github.com/ryantm/agenix/archive/main.tar.gz"}/pkgs/agenix.nix" {})
 
 
 

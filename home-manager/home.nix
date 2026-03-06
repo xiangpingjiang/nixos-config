@@ -1,74 +1,68 @@
 {
+  inputs,
+  pkgs,
   ...
 }:
 
-let
-  home-manager = builtins.fetchTarball "https://github.com/nix-community/home-manager/archive/master.tar.gz";
-in
 {
+
+  home.username = "xpj";
+  home.stateVersion = "26.05";
+  nixpkgs.config.allowUnfree = true;
+
   imports = [
-    (import "${home-manager}/nixos")
+    ./plasma.nix
+    ./rclone.nix
+    ./secrets.nix
+    ./vscode.nix
   ];
-  home-manager.backupFileExtension = "backup";
+  nix.settings.experimental-features = [
+    "nix-command"
+    "flakes"
+  ];
 
-  home-manager.users.xpj =
-    { pkgs, ... }:
-    {
-
-      # The state version is required and should stay at the version you
-      # originally installed.
-      home.stateVersion = "26.05";
-      nixpkgs.config.allowUnfree = true;
-
-      imports = [
-        ./plasma.nix
-        ./rclone.nix
-        "${builtins.fetchTarball "https://github.com/ryantm/agenix/archive/main.tar.gz"}/modules/age-home.nix"
-        ./secrets.nix
-        ./vscode.nix
-      ];
-
-      programs = {
-        ghostty = {
-          enable = true;
-          settings = {
-            # shell-integration = zsh;
-            command = "/run/current-system/sw/bin/zsh";
-            theme = "Tomorrow Night Eighties";
-            # font-size = 10;
-            # keybind = [
-            #   "ctrl+h=goto_split:left"
-            #   "ctrl+l=goto_split:right"
-            # ];
-          };
-        };
-
-        obsidian = {
-          enable = true;
-        };
-        chromium = {
-          enable = true;
-          # package = oldPkgs.chromium;
-          commandLineArgs = [
-            # https://fcitx-im.org/wiki/Using_Fcitx_5_on_Wayland#KDE_Plasma
-            "--enable-features=UseOzonePlatform"
-            "--ozone-platform=wayland"
-            "--enable-wayland-ime"
-          ];
-        };
+  programs = {
+    ghostty = {
+      enable = true;
+      settings = {
+        # shell-integration = zsh;
+        command = "/run/current-system/sw/bin/zsh";
+        theme = "Tomorrow Night Eighties";
+        # font-size = 10;
+        # keybind = [
+        #   "ctrl+h=goto_split:left"
+        #   "ctrl+l=goto_split:right"
+        # ];
       };
-
-      services = {
-        podman = {
-          enable = true;
-          settings.policy = {
-            default = [ { type = "insecureAcceptAnything"; } ];
-          };
-        };
-      };
-
-      home.packages = with pkgs;[
-        gitleaks];
-
     };
+
+    obsidian = {
+      enable = true;
+    };
+    chromium = {
+      enable = true;
+      package = inputs.nixpkgs-chromium-144.legacyPackages.x86_64-linux.chromium;
+      commandLineArgs = [
+        # https://fcitx-im.org/wiki/Using_Fcitx_5_on_Wayland#KDE_Plasma
+        "--enable-features=UseOzonePlatform"
+        "--ozone-platform=wayland"
+        "--enable-wayland-ime"
+        "--user-data-dir=$HOME/.config/chromium-compat" # 和最新版本的不兼容，这条命令数据隔离
+      ];
+    };
+  };
+
+  services = {
+    podman = {
+      enable = true;
+      settings.policy = {
+        default = [ { type = "insecureAcceptAnything"; } ];
+      };
+    };
+  };
+
+  home.packages = with pkgs; [
+    gitleaks
+  ];
+
 }
