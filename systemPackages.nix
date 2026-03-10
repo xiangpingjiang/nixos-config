@@ -22,6 +22,7 @@
 
 
     amdgpu_top
+    restic # 需要cli unlock 或者，远端恢复
 
 
     # kdePackages.kdenlive

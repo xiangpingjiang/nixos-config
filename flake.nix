@@ -4,21 +4,19 @@
   inputs = {
     nixpkgs = {
       url = "github:NixOS/nixpkgs/nixos-unstable";
-
     };
 
     home-manager = {
       url = "github:nix-community/home-manager/master";
       inputs.nixpkgs.follows = "nixpkgs";
-
     };
     nixpkgs-chromium-144 = {
       url = "github:NixOS/nixpkgs/01d402053f2a5cbd4238d20c7e35ff091ff65f36";
-
     };
     agenix = {
       url = "github:ryantm/agenix/main";
       inputs.nixpkgs.follows = "nixpkgs";
+      inputs.home-manager.follows = "home-manager";
       inputs.darwin.follows = "";
     };
     plasma-manager = {

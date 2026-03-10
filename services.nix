@@ -38,7 +38,7 @@ in
       paths = [ "/home/xpj/Documents/sync/kp/" ];
       repository = "rclone:kp_nutstore:/kp/";
       timerConfig = {
-        OnCalendar = "*:3/5";
+        OnCalendar = "*:1/3";
       };
     };
 

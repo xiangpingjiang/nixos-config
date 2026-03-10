@@ -63,6 +63,8 @@
 
   home.packages = with pkgs; [
     gitleaks
+    kubectl
+    kind
   ];
 
 }
