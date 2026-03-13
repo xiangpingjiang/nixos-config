@@ -24,6 +24,14 @@ in
   ];
   programs.vscode = {
     enable = true;
+    package = pkgs.vscode.override {
+      commandLineArgs = [
+        "--enable-features=UseOzonePlatform"
+        "--ozone-platform=wayland"
+        "--enable-wayland-ime"
+        "--"
+      ];
+    };
     profiles.nix = {
       extensions = with pkgs.vscode-extensions; [
         jnoortheen.nix-ide

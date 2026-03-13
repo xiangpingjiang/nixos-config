@@ -4,6 +4,13 @@
   ...
 }:
 
+let
+  # 为 nixpkgs-latest 创建一个允许 unfree 包的实例
+  pkgs-latest = import inputs.nixpkgs-latest {
+    system = "x86_64-linux";
+    config.allowUnfree = true;
+  };
+in
 {
 
   home.username = "xpj";
@@ -65,6 +72,8 @@
     gitleaks
     kubectl
     kind
+    pkgs-latest.claude-code
+    claude-code-router
   ];
 
 }

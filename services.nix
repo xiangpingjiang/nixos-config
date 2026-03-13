@@ -25,30 +25,33 @@ in
     configFile = config.age.secrets.mihomo_config.path;
   };
 
-  services.restic.backups = {
-    webdav-backup = resticBackupsBaseSettings // {
-      paths = [ "/home/xpj/Documents/sync/kp/" ];
-      repository = "rclone:kp_cst:/kp/"; # 'kp_cst' matches rclone config name, kp created before
-      timerConfig = {
-        OnCalendar = "*:0/3"; # *：代表 “每一小时”（小时维度不限制） :：分隔小时和分钟 0/3：代表 “从第 0 分钟开始，每隔 3 分钟”
+  services.restic = {
+    backups = {
+      webdav-backup = resticBackupsBaseSettings // {
+        paths = [ "/home/xpj/Documents/sync/kp/" ];
+        repository = "rclone:kp_cst:/kp/"; # 'kp_cst' matches rclone config name, kp created before
+        timerConfig = {
+          OnCalendar = "*:0/3"; # *：代表 “每一小时”（小时维度不限制） :：分隔小时和分钟 0/3：代表 “从第 0 分钟开始，每隔 3 分钟”
+        };
       };
-    };
 
-    webdav-backup-nutstore = resticBackupsBaseSettings // {
-      paths = [ "/home/xpj/Documents/sync/kp/" ];
-      repository = "rclone:kp_nutstore:/kp/";
-      timerConfig = {
-        OnCalendar = "*:1/3";
+      webdav-backup-nutstore = resticBackupsBaseSettings // {
+        paths = [ "/home/xpj/Documents/sync/kp/" ];
+        repository = "rclone:kp_nutstore:/kp/";
+        timerConfig = {
+          OnCalendar = "*:1/3";
+        };
       };
-    };
 
-    webdav-backup-infini = resticBackupsBaseSettings // {
-      paths = [ "/home/xpj/Documents/sync/kp/" ];
-      repository = "rclone:kp_infini:/kp/";
-      timerConfig = {
-        OnCalendar = "*:2/3"; # *：代表 “每一小时”（小时维度不限制） :：分隔小时和分钟 2/3：代表 “从第 2 分钟开始，每隔 3 分钟”
+      webdav-backup-infini = resticBackupsBaseSettings // {
+        paths = [ "/home/xpj/Documents/sync/kp/" ];
+        repository = "rclone:kp_infini:/kp/";
+        timerConfig = {
+          OnCalendar = "*:2/3"; # *：代表 “每一小时”（小时维度不限制） :：分隔小时和分钟 2/3：代表 “从第 2 分钟开始，每隔 3 分钟”
+        };
       };
     };
+    # server.prometheus = true;
   };
 
   # Enable the X11 windowing system.
@@ -85,4 +88,39 @@ in
   # services.xserver.libinput.enable = true;
 
   services.flatpak.enable = true;
+
+  # services.ollama = {
+  #   enable = true;
+  #   loadModels = [ "qwen3.5:0.8b" ];
+  #   syncModels = true;
+  # };
+
+
+  # services.prometheus = {
+  #   enable = true;
+  #   # alertmanager.enable = true;
+  #   enableReload = true;
+  #   exporters = {
+  #     node = {
+  #       enable = true;
+  #       port = 9100;
+  #     };
+  #     # restic.enable = true;
+  #     # systemd.enable = true;
+  #   };
+  #   globalConfig = {
+  #     scrape_interval = "10s";
+  #   };
+  #   scrapeConfigs = [
+  #     {
+  #       job_name = "node";
+  #       static_configs = [
+  #         {
+  #           targets = [ "127.0.0.1:9100" ];
+  #         }
+  #       ];
+  #     }
+  #   ];
+  #   retentionTime = "15d";
+  # };
 }
