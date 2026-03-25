@@ -35,7 +35,6 @@
 
     feishu
 
-    wechat
     insomnia
     devenv
 

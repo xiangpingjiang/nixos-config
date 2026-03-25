@@ -48,14 +48,35 @@ in
     };
     chromium = {
       enable = true;
-      package = inputs.nixpkgs-chromium-144.legacyPackages.x86_64-linux.chromium;
+      # package = inputs.nixpkgs-chromium-144.legacyPackages.x86_64-linux.chromium;
       commandLineArgs = [
         # https://fcitx-im.org/wiki/Using_Fcitx_5_on_Wayland#KDE_Plasma
         "--enable-features=UseOzonePlatform"
         "--ozone-platform=wayland"
         "--enable-wayland-ime"
-        "--user-data-dir=$HOME/.config/chromium-compat" # 和最新版本的不兼容，这条命令数据隔离
+        # "--user-data-dir=$HOME/.config/chromium-compat" # 和最新版本的不兼容，这条命令数据隔离
       ];
+    };
+
+    opencode = {
+      enable = true;
+      # settings = {
+      #   provider = {
+      #     openrouter = {
+      #       models = {
+      #         "anthropic/claude-3.5-sonnet" = {
+      #           name = "Claude 3.5 Sonnet";
+      #         };
+      #         "openai/gpt-4o" = {
+      #           name = "GPT-4o";
+      #         };
+      #         "google/gemini-pro" = {
+      #           name = "Gemini Pro";
+      #         };
+      #       };
+      #     };
+      #   };
+      # };
     };
   };
 
