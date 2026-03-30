@@ -33,7 +33,7 @@ in
       enable = true;
       settings = {
         # shell-integration = zsh;
-        command = "/run/current-system/sw/bin/zsh";
+        command = "/etc/profiles/per-user/xpj/bin/zsh";
         theme = "Tomorrow Night Eighties";
         # font-size = 10;
         # keybind = [
@@ -78,6 +78,28 @@ in
       #   };
       # };
     };
+
+    # 配置使用 zsh
+    zsh = {
+      enable = true;
+      autosuggestion.enable = true;
+      syntaxHighlighting.enable = true;
+      oh-my-zsh = {
+        enable = true;
+        theme = "";
+        plugins = [
+          "git"
+          "dirhistory"
+          "history"
+          "direnv"
+        ];
+      };
+    };
+
+    starship = {
+      enable = true;
+      enableZshIntegration = true;
+    };
   };
 
   services = {
@@ -95,6 +117,12 @@ in
     kind
     pkgs-latest.claude-code
     claude-code-router
+    scrcpy
+    android-tools
+    kdePackages.krfb
+
+    devenv
+    direnv
   ];
 
 }

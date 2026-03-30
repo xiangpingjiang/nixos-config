@@ -15,6 +15,11 @@ let
   vscodeBaseSettings = {
     "workbench.colorTheme" = "Visual Studio Light";
     "terminal.integrated.defaultProfile.linux" = "zsh";
+    "terminal.integrated.profiles.linux" = {
+      "zsh" = {
+        "path" = "/etc/profiles/per-user/xpj/bin/zsh";
+      };
+    };
   };
 in
 {

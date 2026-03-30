@@ -89,17 +89,6 @@ in
 
   services.flatpak.enable = true;
 
-  # services.sunshine = {
-  #   enable = true;
-  #   autoStart = true;
-  #   capSysAdmin = true; # Wayland 必须，X11 不需要
-  #   openFirewall = true;
-  # };
-
-  # users.users.xpj = {
-  #   extraGroups = [ "input" ];
-  # };
-
   # services.ollama = {
   #   enable = true;
   #   loadModels = [ "qwen3.5:0.8b" ];
