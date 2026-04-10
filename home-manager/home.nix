@@ -1,6 +1,7 @@
 {
   inputs,
   pkgs,
+  config,
   ...
 }:
 
@@ -9,6 +10,14 @@ let
   pkgs-latest = import inputs.nixpkgs-latest {
     system = "x86_64-linux";
     config.allowUnfree = true;
+  };
+  maestro-studio = pkgs.appimageTools.wrapType2 {
+    pname = "maestro-studio";
+    version = "latest";
+    src = pkgs.fetchurl {
+      url = "https://studio.maestro.dev/MaestroStudio.AppImage";
+      sha256 = "04hiw3xy6ahhkgz12269bs555m18hqv44r3ydybhr9ngyzplkdll";
+    };
   };
 in
 {
@@ -22,11 +31,16 @@ in
     ./rclone.nix
     ./secrets.nix
     ./vscode.nix
+    inputs.nix-openclaw.homeManagerModules.openclaw
   ];
   nix.settings.experimental-features = [
     "nix-command"
     "flakes"
   ];
+
+  # backupFileExtension 的位置没有问题
+  # 问题出在别处 nix-openclaw 这个第三方 home-manager 模块
+  home.file.".openclaw/openclaw.json".force = true;
 
   programs = {
     ghostty = {
@@ -40,6 +54,43 @@ in
         #   "ctrl+h=goto_split:left"
         #   "ctrl+l=goto_split:right"
         # ];
+      };
+    };
+
+    openclaw = {
+      enable = true;
+      package = inputs.llm-agents.packages.${pkgs.stdenv.hostPlatform.system}.openclaw;
+      config = {
+        gateway = {
+          mode = "local";
+          auth = {
+            token = "<gatewayToken>"; # or set OPENCLAW_GATEWAY_TOKEN
+          };
+        };
+        channels.telegram = {
+          tokenFile = config.age.secrets.openclaw_channel_telegram.path;
+          allowFrom = [ 6275695642 ];
+        };
+
+        env.vars = {
+          ZAI_API_KEY = config.age.secrets.zai_api_key.path;
+        };
+
+        agents.defaults = {
+          model = {
+            primary = "zai/glm-4.7-flash";
+            fallbacks = [
+              "zai/glm-4.7-flash"
+              "zai/glm-4.6-flash"
+
+            ];
+          };
+          models = {
+            "zai/glm-4.7-flash" = {
+              alias = "GLM-4.7-Flash";
+            };
+          };
+        };
       };
     };
 
@@ -123,6 +174,17 @@ in
 
     devenv
     direnv
-  ];
+    dig
+    dbeaver-bin
+    maestro
 
+    maestro-studio
+
+  ];
+  xdg.desktopEntries.maestro-studio = {
+    name = "Maestro Studio";
+    exec = "${maestro-studio}/bin/maestro-studio";
+    icon = "maestro-studio";  # 可选，没有图标也能显示
+    categories = [ "Development" ];
+  };
 }

@@ -29,4 +29,16 @@ in
     owner = "mihomo";
     group = "mihomo";
   };
+
+  "openclaw_channel_telegram.age" = {
+    publicKeys = [ my_user ];
+    armor = true;
+  };
+
+
+  "zai_api_key.age" = {
+    publicKeys = [ my_user ];
+    armor = true;
+  };
+
 }

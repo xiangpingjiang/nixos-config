@@ -23,6 +23,7 @@ in
     tunMode = true;
     webui = pkgs.metacubexd;
     configFile = config.age.secrets.mihomo_config.path;
+    # configFile = "/home/xpj/config.yaml";
   };
 
   services.restic = {
