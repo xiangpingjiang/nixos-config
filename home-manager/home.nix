@@ -40,7 +40,7 @@ in
 
   # backupFileExtension 的位置没有问题
   # 问题出在别处 nix-openclaw 这个第三方 home-manager 模块
-  home.file.".openclaw/openclaw.json".force = true;
+  # home.file.".openclaw/openclaw.json".force = true;
 
   programs = {
     ghostty = {
@@ -57,42 +57,42 @@ in
       };
     };
 
-    openclaw = {
-      enable = true;
-      package = inputs.llm-agents.packages.${pkgs.stdenv.hostPlatform.system}.openclaw;
-      config = {
-        gateway = {
-          mode = "local";
-          auth = {
-            token = "<gatewayToken>"; # or set OPENCLAW_GATEWAY_TOKEN
-          };
-        };
-        channels.telegram = {
-          tokenFile = config.age.secrets.openclaw_channel_telegram.path;
-          allowFrom = [ 6275695642 ];
-        };
+    # openclaw = {
+    #   enable = true;
+    #   package = inputs.llm-agents.packages.${pkgs.stdenv.hostPlatform.system}.openclaw;
+    #   config = {
+    #     gateway = {
+    #       mode = "local";
+    #       auth = {
+    #         token = "<gatewayToken>"; # or set OPENCLAW_GATEWAY_TOKEN
+    #       };
+    #     };
+    #     channels.telegram = {
+    #       tokenFile = config.age.secrets.openclaw_channel_telegram.path;
+    #       allowFrom = [ 6275695642 ];
+    #     };
 
-        env.vars = {
-          ZAI_API_KEY = config.age.secrets.zai_api_key.path;
-        };
+    #     env.vars = {
+    #       ZAI_API_KEY = config.age.secrets.zai_api_key.path;
+    #     };
 
-        agents.defaults = {
-          model = {
-            primary = "zai/glm-4.7-flash";
-            fallbacks = [
-              "zai/glm-4.7-flash"
-              "zai/glm-4.6-flash"
+    #     agents.defaults = {
+    #       model = {
+    #         primary = "zai/glm-4.7-flash";
+    #         fallbacks = [
+    #           "zai/glm-4.7-flash"
+    #           "zai/glm-4.6-flash"
 
-            ];
-          };
-          models = {
-            "zai/glm-4.7-flash" = {
-              alias = "GLM-4.7-Flash";
-            };
-          };
-        };
-      };
-    };
+    #         ];
+    #       };
+    #       models = {
+    #         "zai/glm-4.7-flash" = {
+    #           alias = "GLM-4.7-Flash";
+    #         };
+    #       };
+    #     };
+    #   };
+    # };
 
     obsidian = {
       enable = true;

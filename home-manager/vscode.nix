@@ -59,6 +59,7 @@ in
         ms-python.vscode-pylance
         ms-python.python
         natqe.reload
+        eamodio.gitlens
       ];
       userSettings = vscodeBaseSettings;
     };
