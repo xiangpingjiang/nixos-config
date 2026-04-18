@@ -6,7 +6,6 @@
 
   programs = {
 
-
     git = {
       enable = true;
       #globalConfig file:/etc/gitconfig
@@ -16,6 +15,10 @@
           email = "xiangpingjiang1998@gmail.com";
         };
         init.defaultBranch = "main";
+        diff."age" = {
+          textconv = "/run/current-system/sw/bin/age -d -i /home/xpj/.ssh/id_ed25519";
+          binary = true;
+        };
       };
     };
 
@@ -32,4 +35,3 @@
     };
   };
 }
-

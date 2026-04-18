@@ -1,7 +1,6 @@
 {
   inputs,
   pkgs,
-  config,
   ...
 }:
 
@@ -176,9 +175,9 @@ in
     direnv
     dig
     dbeaver-bin
-    maestro
 
     maestro-studio
+    pkgs-latest.maestro
 
   ];
   xdg.desktopEntries.maestro-studio = {

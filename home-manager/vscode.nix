@@ -37,6 +37,15 @@ in
         "--"
       ];
     };
+    #有些配置必须在 Default 里 
+    profiles.default = {
+      userSettings = {
+        "workbench.colorTheme" = "Visual Studio Light";
+        "dev.containers.dockerPath" = "podman";
+        "update.mode" = "none";
+        "dev.containers.dockerComposePath" = "podman-compose";
+      };
+    };
     profiles.nix = {
       extensions = with pkgs.vscode-extensions; [
         jnoortheen.nix-ide
@@ -60,6 +69,7 @@ in
         ms-python.python
         natqe.reload
         eamodio.gitlens
+        ms-vscode-remote.remote-containers
       ];
       userSettings = vscodeBaseSettings;
     };
@@ -74,6 +84,13 @@ in
       extensions = with pkgs.vscode-marketplace; [
         natqe.reload
         myriad-dreamin.tinymist
+      ];
+      userSettings = vscodeBaseSettings;
+    };
+    profiles.markdown = {
+      extensions = with pkgs.vscode-marketplace; [
+        natqe.reload
+        shd101wyy.markdown-preview-enhanced
       ];
       userSettings = vscodeBaseSettings;
     };
