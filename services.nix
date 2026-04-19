@@ -23,7 +23,7 @@ in
     tunMode = true;
     webui = pkgs.metacubexd;
     configFile = config.age.secrets.mihomo_config.path;
-    # configFile = "/home/xpj/config.yaml";
+    # configFile = "/home/xpj/Projects/nixos-config/mihomo_test_config.yaml" 测试调试用;
   };
 
   services.restic = {

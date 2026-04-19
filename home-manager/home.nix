@@ -30,6 +30,7 @@ in
     ./rclone.nix
     ./secrets.nix
     ./vscode.nix
+    ./claude-code-config.nix
     inputs.nix-openclaw.homeManagerModules.openclaw
   ];
   nix.settings.experimental-features = [
