@@ -47,7 +47,7 @@ in
       enable = true;
       settings = {
         # shell-integration = zsh;
-        command = "/etc/profiles/per-user/xpj/bin/zsh";
+        command = "${pkgs.zsh}/bin/zsh";
         theme = "Tomorrow Night Eighties";
         # font-size = 10;
         # keybind = [

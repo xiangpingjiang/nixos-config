@@ -90,12 +90,22 @@ in
 
   services.flatpak.enable = true;
 
+  systemd.services.flatpak-repo = {
+    wantedBy = [ "multi-user.target" ];
+    path = [ pkgs.flatpak ];
+    script = ''
+      flatpak remote-add --if-not-exists flathub \
+        https://dl.flathub.org/repo/flathub.flatpakrepo
+      flatpak remote-modify flathub \
+        --url=https://mirrors.ustc.edu.cn/flathub
+    '';
+  };
+
   # services.ollama = {
   #   enable = true;
   #   loadModels = [ "qwen3.5:0.8b" ];
   #   syncModels = true;
   # };
-
 
   # services.prometheus = {
   #   enable = true;
