@@ -171,6 +171,7 @@ in
     scrcpy
     android-tools
     kdePackages.krfb
+    kdePackages.krdc
 
     devenv
     direnv
