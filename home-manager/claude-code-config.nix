@@ -10,17 +10,15 @@
       model = "claude-sonnet-4-6";
 
       # 权限控制
-      # permissions = {
-      #   allow = [
-      #     "Bash(git *)"
-      #     "Bash(cargo *)"
-      #     "Bash(npm *)"
-      #     "Read(**)"
-      #   ];
+      permissions = {
+        allow = [
+          "Bash(find)"
+          "Bash(ls)"
+        ];
       #   deny = [
       #     "Bash(rm -rf *)"
       #   ];
-      # };
+      };
 
       # 注入环境变量（适合设置 API base URL 等）
       env = {

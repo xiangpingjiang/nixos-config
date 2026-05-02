@@ -15,7 +15,7 @@ let
     version = "latest";
     src = pkgs.fetchurl {
       url = "https://studio.maestro.dev/MaestroStudio.AppImage";
-      sha256 = "04hiw3xy6ahhkgz12269bs555m18hqv44r3ydybhr9ngyzplkdll";
+      sha256 = "sha256-8S3tqdykR11a1feOlNCiSqu0SCEcnkjJU45byIEymEA=";
     };
   };
 in
@@ -166,7 +166,8 @@ in
     gitleaks
     kubectl
     kind
-    pkgs-latest.claude-code
+    inputs.llm-agents.packages.${pkgs.stdenv.hostPlatform.system}.claude-code
+    # pkgs-latest.claude-code
     claude-code-router
     scrcpy
     android-tools
@@ -180,12 +181,19 @@ in
 
     maestro-studio
     pkgs-latest.maestro
-
+    mitmproxy
+    openssl
+    # (nomachine-client.overrideAttrs (old: {
+    #   src = pkgs.fetchurl {
+    #     url = "https://download.nomachine.com/download/9.4/Linux/nomachine_9.4.14_1_x86_64.tar.gz";
+    #     hash = "sha256-tLL8l/UgTiVzGs+mwJeRUlVA8lH72JVogBOEpaSr2AY=";
+    #   };
+    # }))
   ];
   xdg.desktopEntries.maestro-studio = {
     name = "Maestro Studio";
     exec = "${maestro-studio}/bin/maestro-studio";
-    icon = "maestro-studio";  # 可选，没有图标也能显示
+    icon = "maestro-studio"; # 可选，没有图标也能显示
     categories = [ "Development" ];
   };
 }

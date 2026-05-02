@@ -1,16 +1,9 @@
 {
   pkgs,
+  inputs,
   ...
 }:
 let
-  nix-vscode-extensions = import (
-    builtins.fetchGit {
-      url = "https://github.com/nix-community/nix-vscode-extensions";
-      ref = "refs/heads/master";
-      rev = "c22e7adea9adec98b3dc79be954ee17d56a232bd";
-    }
-  );
-
   # 定义所有 profile 共用的基础配置
   vscodeBaseSettings = {
     "workbench.colorTheme" = "Visual Studio Light";
@@ -25,7 +18,7 @@ in
 {
 
   nixpkgs.overlays = [
-    nix-vscode-extensions.overlays.default
+    inputs.nix-vscode-extensions.overlays.default
   ];
   programs.vscode = {
     enable = true;
@@ -91,6 +84,19 @@ in
       extensions = with pkgs.vscode-marketplace; [
         natqe.reload
         shd101wyy.markdown-preview-enhanced
+      ];
+      userSettings = vscodeBaseSettings;
+    };
+    profiles.java = {
+      extensions = with pkgs.vscode-extensions; [
+        natqe.reload
+        vscjava.vscode-java-pack
+        redhat.java
+        vscjava.vscode-java-debug
+        vscjava.vscode-java-test
+        vscjava.vscode-maven
+        vscjava.vscode-java-dependency
+        ms-vscode-remote.remote-containers
       ];
       userSettings = vscodeBaseSettings;
     };
