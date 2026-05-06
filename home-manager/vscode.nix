@@ -96,7 +96,7 @@ in
         vscjava.vscode-java-test
         vscjava.vscode-maven
         vscjava.vscode-java-dependency
-        ms-vscode-remote.remote-containers
+        eamodio.gitlens
       ];
       userSettings = vscodeBaseSettings;
     };

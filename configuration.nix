@@ -36,6 +36,8 @@
     GO111MODULE = "on";
     # 设置国内代理（任选其一即可）
     GOPROXY = "https://goproxy.cn,direct";
+
+    JDK21_HOME = "${pkgs.jdk21}";
   };
 
   environment.sessionVariables = {

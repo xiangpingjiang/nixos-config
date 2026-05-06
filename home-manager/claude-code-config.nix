@@ -9,15 +9,26 @@
       # 模型选择
       model = "claude-sonnet-4-6";
 
+      language = "chinese";
+
       # 权限控制
       permissions = {
         allow = [
-          "Bash(find)"
-          "Bash(ls)"
+          "Read(*)"
+          # 只读 Bash 命令
+          "Bash(find *)"
+          "Bash(ls *)"
+          "Bash(cat *)"
+          "Bash(grep *)"
+          "Bash(head *)"
+          "Bash(tail *)"
+          "Bash(echo *)"
+          "Bash(pwd)"
+          "Bash(xargs *)"
         ];
-      #   deny = [
-      #     "Bash(rm -rf *)"
-      #   ];
+        deny = [
+          "Read(~/.ssh/*)"
+        ];
       };
 
       # 注入环境变量（适合设置 API base URL 等）

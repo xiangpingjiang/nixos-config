@@ -31,7 +31,7 @@ in
     ./secrets.nix
     ./vscode.nix
     ./claude-code-config.nix
-    inputs.nix-openclaw.homeManagerModules.openclaw
+    # inputs.nix-openclaw.homeManagerModules.openclaw
   ];
   nix.settings.experimental-features = [
     "nix-command"
@@ -151,6 +151,11 @@ in
       enable = true;
       enableZshIntegration = true;
     };
+
+    java = {
+      enable = true;
+      package = pkgs.jdk8;
+    };
   };
 
   services = {
@@ -189,6 +194,7 @@ in
     #     hash = "sha256-tLL8l/UgTiVzGs+mwJeRUlVA8lH72JVogBOEpaSr2AY=";
     #   };
     # }))
+    maven
   ];
   xdg.desktopEntries.maestro-studio = {
     name = "Maestro Studio";

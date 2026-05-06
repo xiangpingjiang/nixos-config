@@ -37,6 +37,7 @@
 
     insomnia
     age #用来查看 mihomo config 的 diff
+    jdk21
 
 
 
