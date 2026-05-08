@@ -30,7 +30,7 @@ in
         "--"
       ];
     };
-    #有些配置必须在 Default 里 
+    #有些配置必须在 Default 里
     profiles.default = {
       userSettings = {
         "workbench.colorTheme" = "Visual Studio Light";
@@ -88,16 +88,20 @@ in
       userSettings = vscodeBaseSettings;
     };
     profiles.java = {
-      extensions = with pkgs.vscode-extensions; [
-        natqe.reload
-        vscjava.vscode-java-pack
-        redhat.java
-        vscjava.vscode-java-debug
-        vscjava.vscode-java-test
-        vscjava.vscode-maven
-        vscjava.vscode-java-dependency
-        eamodio.gitlens
-      ];
+      extensions =
+        (with pkgs.vscode-extensions; [
+          natqe.reload
+          vscjava.vscode-java-pack
+          redhat.java
+          vscjava.vscode-java-debug
+          vscjava.vscode-java-test
+          vscjava.vscode-maven
+          vscjava.vscode-java-dependency
+          eamodio.gitlens
+        ])
+        ++ (with pkgs.vscode-marketplace; [
+          anthropic.claude-code
+        ]);
       userSettings = vscodeBaseSettings;
     };
   };

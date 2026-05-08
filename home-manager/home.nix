@@ -30,7 +30,8 @@ in
     ./rclone.nix
     ./secrets.nix
     ./vscode.nix
-    ./claude-code-config.nix
+    ./claude-code.nix
+    ./opencode.nix
     # inputs.nix-openclaw.homeManagerModules.openclaw
   ];
   nix.settings.experimental-features = [
@@ -154,7 +155,7 @@ in
 
     java = {
       enable = true;
-      package = pkgs.jdk8;
+      package = pkgs.jdk21;
     };
   };
 
@@ -171,8 +172,6 @@ in
     gitleaks
     kubectl
     kind
-    inputs.llm-agents.packages.${pkgs.stdenv.hostPlatform.system}.claude-code
-    # pkgs-latest.claude-code
     claude-code-router
     scrcpy
     android-tools
@@ -195,6 +194,7 @@ in
     #   };
     # }))
     maven
+    jdt-language-server
   ];
   xdg.desktopEntries.maestro-studio = {
     name = "Maestro Studio";
