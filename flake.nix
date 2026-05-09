@@ -41,6 +41,10 @@
       url = "github:nix-community/nix-vscode-extensions";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    nix4vscode = {
+      url = "github:nix-community/nix4vscode/master";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
@@ -49,6 +53,7 @@
       nixpkgs,
       home-manager,
       agenix,
+      nix4vscode,
       ...
     }@inputs:
     {
@@ -60,6 +65,7 @@
           modules = [
             ./configuration.nix
             agenix.nixosModules.default
+            
             home-manager.nixosModules.home-manager
             {
               # home-manager.useGlobalPkgs = true;

@@ -87,6 +87,13 @@ in
       ];
       userSettings = vscodeBaseSettings;
     };
+    profiles.josnnet = {
+      extensions = (with pkgs.vscode-marketplace; [
+        natqe.reload
+      ])
+      ++ pkgs.nix4vscode.forVscode [ "grafana.vscode-jsonnet" ];
+      userSettings = vscodeBaseSettings;
+    };
     profiles.java = {
       extensions =
         (with pkgs.vscode-extensions; [

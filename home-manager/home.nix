@@ -24,7 +24,7 @@ in
   home.username = "xpj";
   home.stateVersion = "26.05";
   nixpkgs.config.allowUnfree = true;
-
+  nixpkgs.overlays = [ inputs.nix4vscode.overlays.default ];
   imports = [
     ./plasma.nix
     ./rclone.nix
@@ -110,27 +110,6 @@ in
       ];
     };
 
-    opencode = {
-      enable = true;
-      # settings = {
-      #   provider = {
-      #     openrouter = {
-      #       models = {
-      #         "anthropic/claude-3.5-sonnet" = {
-      #           name = "Claude 3.5 Sonnet";
-      #         };
-      #         "openai/gpt-4o" = {
-      #           name = "GPT-4o";
-      #         };
-      #         "google/gemini-pro" = {
-      #           name = "Gemini Pro";
-      #         };
-      #       };
-      #     };
-      #   };
-      # };
-    };
-
     # 配置使用 zsh
     zsh = {
       enable = true;
@@ -195,6 +174,9 @@ in
     # }))
     maven
     jdt-language-server
+
+    go-jsonnet
+    jsonnet-bundler
   ];
   xdg.desktopEntries.maestro-studio = {
     name = "Maestro Studio";

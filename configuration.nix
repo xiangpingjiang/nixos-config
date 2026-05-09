@@ -10,15 +10,17 @@
 {
 
   nix.settings.substituters = [
+    # 官方缓存暂时放前 国内最近比较卡
+    "https://cache.nixos.org"
     # 优先使用国内镜像
-    "https://mirror.sjtu.edu.cn/nix-channels/store"
+    
     "https://mirrors.cernet.edu.cn/nix-channels/store"
     "https://mirrors.ustc.edu.cn/nix-channels/store"
     "https://mirrors.tuna.tsinghua.edu.cn/nix-channels/store"
     "https://mirror.nju.edu.cn/nix-channels/store"
+    "https://mirror.sjtu.edu.cn/nix-channels/store"
 
-    # 官方缓存作为后备
-    "https://cache.nixos.org"
+
   ];
 
   imports = [

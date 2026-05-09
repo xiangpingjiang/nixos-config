@@ -15,4 +15,7 @@
   age.secrets.zai_api_key.file = ../secrets/zai_api_key.age;
 
 
+  age.secrets.deepseek_api_key.file = ../secrets/deepseek_api_key.age;
+
+
 }

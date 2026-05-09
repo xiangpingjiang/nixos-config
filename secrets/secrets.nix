@@ -41,4 +41,9 @@ in
     armor = true;
   };
 
+  "deepseek_api_key.age" = {
+    publicKeys = [ my_user ];
+    armor = true;
+  };
+
 }

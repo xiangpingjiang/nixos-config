@@ -1,6 +1,7 @@
 {
   inputs,
   pkgs,
+  config,
   ...
 }:
 # let
@@ -11,10 +12,18 @@
 #     sha256 =  "sha256-DipPgDgRMYreqMkeNQRtTk7zXRUm/4i9zZpjMrVW8zQ="; #pkgs.lib.fakeHash 第一次 build 报错后替换为正确 hash
 #   };
 # in
+
+let
+  claude-code-orig = inputs.llm-agents.packages.${pkgs.stdenv.hostPlatform.system}.claude-code;
+  claude-code-wrapped = pkgs.writeShellScriptBin "claude" ''
+    export ANTHROPIC_AUTH_TOKEN="$(cat ${config.age.secrets.deepseek_api_key.path})"
+    exec ${claude-code-orig}/bin/claude "$@"
+  '';
+in
 {
   programs.claude-code = {
     enable = true;
-    package = inputs.llm-agents.packages.${pkgs.stdenv.hostPlatform.system}.claude-code;
+    package = claude-code-wrapped;
     # plugins = [
     #   "${claudeCodeLsps}/jdtls"
     # ];
@@ -24,41 +33,58 @@
       language = "chinese";
       autoAcceptEdits = false;
       showTurnDuration = true;
-      defaultMode = "plan";
 
       permissions = {
         allow = [
-          "Read(*)"
-          "Bash(find *)"
-          "Bash(ls *)"
-          "Bash(cat *)"
-          "Bash(grep *)"
-          "Bash(head *)"
-          "Bash(tail *)"
-          "Bash(echo *)"
+          "Read(/home/xpj/Projects/**)"
+          "Read(/home/xpj/.m2/**)"
+          "Bash(find **)"
+          "Bash(grep **)"
+          "Bash(echo **)"
           "Bash(pwd)"
-          "Bash(xargs *)"
+          "Bash(xargs **)"
         ];
         deny = [
-          "Read(~/.ssh/*)"
+          "Read(~/.ssh/**)"
         ];
       };
-  #     enabledPlugins = {
-  #       "jdtls@claudeCodeLsps" = true;
-  #     };
-
-  #       lspServers = {
-  #   jdtls = {
-  #     command = "${pkgs.jdt-language-server}/bin/jdtls";
-  #     args = []; # 或按需传参
-  #     filetypes = [ "java" ];
-  #     # 可能还有 initializationOptions、startupTimeout 等
-  #   };
-  # };
+      enabledPlugins = {
+        "jdtls-lsp@claude-plugins-official" = true;
+      };
       env = {
-        ANTHROPIC_BASE_URL = "https://api.anthropic.com";
-        ENABLE_LSP_TOOL = "1";
+        # ANTHROPIC_BASE_URL = "https://api.anthropic.com";
+
+        ANTHROPIC_BASE_URL = "https://api.deepseek.com/anthropic";
+        ANTHROPIC_MODEL = "deepseek-v4-pro";
+        ANTHROPIC_DEFAULT_OPUS_MODEL = "deepseek-v4-pro";
+        ANTHROPIC_DEFAULT_SONNET_MODEL = "deepseek-v4-pro";
+        ANTHROPIC_DEFAULT_HAIKU_MODEL = "deepseek-v4-flash";
+        CLAUDE_CODE_SUBAGENT_MODEL = "deepseek-v4-flash";
+        CLAUDE_CODE_EFFORT_LEVEL = "max";
       };
     };
   };
+
+  # 暂时不需要
+
+  # home.file.".claude-code-router/config.json" = {
+  #   text = builtins.toJSON {
+  #     HOST = "0.0.0.0";
+  #     PORT = 8080;
+  #     Providers = [
+  #       {
+  #         name = "deepseek";
+  #         api_base_url = "https://api.openai.com/v1/chat/completions";
+  #         api_key = "your-api-key-here";
+  #         models = [
+  #           "gpt-4"
+  #           "gpt-3.5-turbo"
+  #         ];
+  #       }
+  #     ];
+  #     Router = {
+  #       default = "deepseek";
+  #     };
+  #   };
+  # };
 }
