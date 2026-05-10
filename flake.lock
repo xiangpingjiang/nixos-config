@@ -152,26 +152,6 @@
         "type": "github"
       }
     },
-    "nix-vscode-extensions": {
-      "inputs": {
-        "nixpkgs": [
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1778297753,
-        "narHash": "sha256-IRgRWBkluHR+JiNmhS/fbTbodr22/P9MuWZSU7x3DGI=",
-        "owner": "nix-community",
-        "repo": "nix-vscode-extensions",
-        "rev": "a15c2ddce7f4018f9277c727f6689c56be8b2720",
-        "type": "github"
-      },
-      "original": {
-        "owner": "nix-community",
-        "repo": "nix-vscode-extensions",
-        "type": "github"
-      }
-    },
     "nix4vscode": {
       "inputs": {
         "nixpkgs": [
@@ -212,11 +192,11 @@
     },
     "nixpkgs-latest": {
       "locked": {
-        "lastModified": 1778382018,
-        "narHash": "sha256-GRthXtX5SbDKT8xQpeNT8t5kvSYC+dT3mFrPLc7nQSU=",
+        "lastModified": 1778384296,
+        "narHash": "sha256-UA0eMrQ5mqFdsLdRyPv9cutasNneaSKclryNQ8rgJ8o=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "a7667b585d57a4568048c222ff4f102a3277b39b",
+        "rev": "e8c3e414a6aacd8733fbeeca5791ecee0642e5f9",
         "type": "github"
       },
       "original": {
@@ -255,7 +235,6 @@
         "agenix": "agenix",
         "home-manager": "home-manager",
         "llm-agents": "llm-agents",
-        "nix-vscode-extensions": "nix-vscode-extensions",
         "nix4vscode": "nix4vscode",
         "nixpkgs": "nixpkgs",
         "nixpkgs-latest": "nixpkgs-latest",

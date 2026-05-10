@@ -1,6 +1,5 @@
 {
   pkgs,
-  inputs,
   ...
 }:
 let
@@ -17,9 +16,7 @@ let
 in
 {
 
-  nixpkgs.overlays = [
-    inputs.nix-vscode-extensions.overlays.default
-  ];
+
   programs.vscode = {
     enable = true;
     package = pkgs.vscode.override {
@@ -40,9 +37,9 @@ in
       };
     };
     profiles.nix = {
-      extensions = with pkgs.vscode-extensions; [
-        jnoortheen.nix-ide
-        natqe.reload
+      extensions = pkgs.nix4vscode.forVscode [
+        "jnoortheen.nix-ide"
+        "natqe.reload"
       ];
       userSettings = vscodeBaseSettings // {
         "nix.enableLanguageServer" = true;
@@ -56,59 +53,56 @@ in
       };
     };
     profiles.python = {
-      extensions = with pkgs.vscode-extensions; [
-        ms-python.debugpy
-        ms-python.vscode-pylance
-        ms-python.python
-        natqe.reload
-        eamodio.gitlens
-        ms-vscode-remote.remote-containers
+      extensions = pkgs.nix4vscode.forVscode [
+        "ms-python.debugpy"
+        "ms-python.vscode-pylance"
+        "ms-python.python"
+        "natqe.reload"
+        "eamodio.gitlens"
+        "ms-vscode-remote.remote-containers"
       ];
       userSettings = vscodeBaseSettings;
     };
     profiles.golang = {
-      extensions = with pkgs.vscode-extensions; [
-        natqe.reload
-        golang.go
+      extensions = pkgs.nix4vscode.forVscode [
+        "natqe.reload"
+        "golang.go"
       ];
       userSettings = vscodeBaseSettings;
     };
     profiles.typst = {
-      extensions = with pkgs.vscode-marketplace; [
-        natqe.reload
-        myriad-dreamin.tinymist
+      extensions = pkgs.nix4vscode.forVscode [
+        "natqe.reload"
+        "myriad-dreamin.tinymist"
       ];
       userSettings = vscodeBaseSettings;
     };
     profiles.markdown = {
-      extensions = with pkgs.vscode-marketplace; [
-        natqe.reload
-        shd101wyy.markdown-preview-enhanced
+      extensions = pkgs.nix4vscode.forVscode [
+        "natqe.reload"
+        "shd101wyy.markdown-preview-enhanced"
       ];
       userSettings = vscodeBaseSettings;
     };
-    profiles.josnnet = {
-      extensions = (with pkgs.vscode-marketplace; [
-        natqe.reload
-      ])
-      ++ pkgs.nix4vscode.forVscode [ "grafana.vscode-jsonnet" ];
+    profiles.jsonnet = {
+      extensions = pkgs.nix4vscode.forVscode [
+        "natqe.reload"
+        "grafana.vscode-jsonnet"
+      ];
       userSettings = vscodeBaseSettings;
     };
     profiles.java = {
-      extensions =
-        (with pkgs.vscode-extensions; [
-          natqe.reload
-          vscjava.vscode-java-pack
-          redhat.java
-          vscjava.vscode-java-debug
-          vscjava.vscode-java-test
-          vscjava.vscode-maven
-          vscjava.vscode-java-dependency
-          eamodio.gitlens
-        ])
-        ++ (with pkgs.vscode-marketplace; [
-          anthropic.claude-code
-        ]);
+      extensions = pkgs.nix4vscode.forVscode [
+        "natqe.reload"
+        "vscjava.vscode-java-pack"
+        "redhat.java"
+        "vscjava.vscode-java-debug"
+        "vscjava.vscode-java-test"
+        "vscjava.vscode-maven"
+        "vscjava.vscode-java-dependency"
+        "eamodio.gitlens"
+        "anthropic.claude-code"
+      ];
       userSettings = vscodeBaseSettings;
     };
   };
