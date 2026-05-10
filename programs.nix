@@ -22,9 +22,7 @@
       };
     };
 
-    firefox = {
-      enable = true;
-    };
+
     appimage = {
       enable = true;
       binfmt = true; # 注册 binfmt，让 AppImage 可以直接双击/直接执行

@@ -100,38 +100,4 @@ in
         --url=https://mirrors.ustc.edu.cn/flathub
     '';
   };
-
-  # services.ollama = {
-  #   enable = true;
-  #   loadModels = [ "qwen3.5:0.8b" ];
-  #   syncModels = true;
-  # };
-
-  # services.prometheus = {
-  #   enable = true;
-  #   # alertmanager.enable = true;
-  #   enableReload = true;
-  #   exporters = {
-  #     node = {
-  #       enable = true;
-  #       port = 9100;
-  #     };
-  #     # restic.enable = true;
-  #     # systemd.enable = true;
-  #   };
-  #   globalConfig = {
-  #     scrape_interval = "10s";
-  #   };
-  #   scrapeConfigs = [
-  #     {
-  #       job_name = "node";
-  #       static_configs = [
-  #         {
-  #           targets = [ "127.0.0.1:9100" ];
-  #         }
-  #       ];
-  #     }
-  #   ];
-  #   retentionTime = "15d";
-  # };
 }

@@ -16,7 +16,6 @@ let
 in
 {
 
-
   programs.vscode = {
     enable = true;
     package = pkgs.vscode.override {
@@ -43,6 +42,7 @@ in
       ];
       userSettings = vscodeBaseSettings // {
         "nix.enableLanguageServer" = true;
+        "editor.formatOnSave" = true;
         "nix.serverPath" = "nil";
         "nix.serverSettings.nil" = {
           "formatting" = {

@@ -35,7 +35,6 @@ in
     armor = true;
   };
 
-
   "zai_api_key.age" = {
     publicKeys = [ my_user ];
     armor = true;
