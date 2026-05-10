@@ -22,6 +22,7 @@ in
 {
 
   home.username = "xpj";
+  home.homeDirectory = "/home/xpj";
   home.stateVersion = "26.05";
   nixpkgs.config.allowUnfree = true;
   nixpkgs.overlays = [ inputs.nix4vscode.overlays.default ];
@@ -29,11 +30,12 @@ in
     ./plasma.nix
     ./rclone.nix
     ./secrets.nix
-    ./vscode.nix
-    ./claude-code.nix
-    ./opencode.nix
+    ./develop/vscode.nix
+    ./develop/claude-code.nix
+    ./develop/opencode.nix
     # inputs.nix-openclaw.homeManagerModules.openclaw
   ];
+  nix.package = pkgs.nix;
   nix.settings.experimental-features = [
     "nix-command"
     "flakes"
@@ -177,6 +179,8 @@ in
 
     go-jsonnet
     jsonnet-bundler
+
+    (inputs.home-manager.packages.${pkgs.stdenv.hostPlatform.system}.default) #单独执行 hm 的更新
   ];
   xdg.desktopEntries.maestro-studio = {
     name = "Maestro Studio";

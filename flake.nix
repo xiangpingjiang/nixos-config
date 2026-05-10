@@ -52,19 +52,22 @@
       nix4vscode,
       ...
     }@inputs:
+    let
+      system = "x86_64-linux";
+      pkgs = nixpkgs.legacyPackages.${system};
+    in
     {
       # System configurations
       nixosConfigurations = {
         nixos = nixpkgs.lib.nixosSystem {
-          specialArgs = { inherit inputs; }; # this is the important part
-          system = "x86_64-linux";
+          specialArgs = { inherit inputs; };
+          inherit system;
           modules = [
             ./configuration.nix
             agenix.nixosModules.default
-            
+
             home-manager.nixosModules.home-manager
             {
-              # home-manager.useGlobalPkgs = true;
               home-manager.useUserPackages = true;
               home-manager.backupFileExtension = "backup";
               home-manager.users.xpj = {
@@ -81,6 +84,17 @@
             }
           ];
         };
+      };
+
+      # Standalone home-manager — faster rebuild when only ~/home-manager changes
+      homeConfigurations.xpj = home-manager.lib.homeManagerConfiguration {
+        inherit pkgs;
+        modules = [
+          ./home-manager/home.nix
+          inputs.agenix.homeManagerModules.default
+          inputs.plasma-manager.homeModules.plasma-manager
+        ];
+        extraSpecialArgs = { inherit inputs; };
       };
     };
 }
