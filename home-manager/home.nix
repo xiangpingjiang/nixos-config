@@ -35,6 +35,7 @@ in
     ./develop/vscode.nix
     ./develop/claude-code.nix
     ./develop/opencode.nix
+    ./develop/deepseek-tui.nix
     # inputs.nix-openclaw.homeManagerModules.openclaw
   ];
   nix.package = lib.mkDefault pkgs.nix;
@@ -100,6 +101,7 @@ in
     localsend
     keepassxc
     fastfetch
+    unrar-free
 
     (inputs.home-manager.packages.${pkgs.stdenv.hostPlatform.system}.default) # 单独执行 hm 的更新
   ];
