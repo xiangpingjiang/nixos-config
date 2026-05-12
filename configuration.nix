@@ -9,18 +9,28 @@
 
 {
 
-  nix.settings.substituters = [
-    # 官方缓存暂时放前 国内最近比较卡
-    "https://cache.nixos.org"
-    # 优先使用国内镜像
-    
-    "https://mirrors.cernet.edu.cn/nix-channels/store"
-    "https://mirrors.ustc.edu.cn/nix-channels/store"
-    "https://mirrors.tuna.tsinghua.edu.cn/nix-channels/store"
-    "https://mirror.nju.edu.cn/nix-channels/store"
+  nix.settings = {
+    substituters = [
+      # 官方缓存暂时放前 国内最近比较卡
+      "https://cache.nixos.org"
+      # binary cache for llm-agents
+      "https://cache.numtide.com"
 
+      "https://nix-community.cachix.org"
+      # 优先使用国内镜像
 
-  ];
+      "https://mirrors.cernet.edu.cn/nix-channels/store"
+      "https://mirrors.ustc.edu.cn/nix-channels/store"
+      "https://mirrors.tuna.tsinghua.edu.cn/nix-channels/store"
+      "https://mirror.nju.edu.cn/nix-channels/store"
+
+    ];
+
+    trusted-public-keys = [
+      "niks3.numtide.com-1:DTx8wZduET09hRmMtKdQDxNNthLQETkc/yaX7M4qK0g="
+      "nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs="
+    ];
+  };
 
   imports = [
     # Include the results of the hardware scan.
