@@ -34,6 +34,7 @@ in
     ./programs.nix
     ./develop/vscode.nix
     ./develop/claude-code.nix
+    ./develop/codex.nix
     ./develop/opencode.nix
     ./develop/deepseek-tui.nix
     # inputs.nix-openclaw.homeManagerModules.openclaw

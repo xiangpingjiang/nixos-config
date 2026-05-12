@@ -3,7 +3,7 @@
 let
   deepseek-tui = pkgs.stdenv.mkDerivation {
     pname = "deepseek-tui";
-    version = "latest";
+    version = "0.8.30";
 
     src = pkgs.fetchurl {
       url = "https://github.com/Hmbown/DeepSeek-TUI/releases/latest/download/deepseek-tui-linux-x64";
