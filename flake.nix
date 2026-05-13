@@ -65,20 +65,6 @@
           modules = [
             ./configuration.nix
             agenix.nixosModules.default
-
-            home-manager.nixosModules.home-manager
-            {
-              home-manager.useUserPackages = true;
-              home-manager.backupFileExtension = "backup";
-              home-manager.users.xpj = {
-                imports = [
-                  ./home-manager/home.nix
-                  inputs.agenix.homeManagerModules.default
-                  inputs.plasma-manager.homeModules.plasma-manager
-                ];
-              };
-              home-manager.extraSpecialArgs = { inherit inputs; };
-            }
             {
               environment.systemPackages = [ agenix.packages.x86_64-linux.default ];
             }

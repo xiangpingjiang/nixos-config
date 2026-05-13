@@ -71,7 +71,6 @@ in
     devenv
     direnv
     dig
-    dbeaver-bin
 
     maestro-studio
     pkgs-latest.maestro
@@ -105,6 +104,8 @@ in
     unrar-free
 
     (inputs.home-manager.packages.${pkgs.stdenv.hostPlatform.system}.default) # 单独执行 hm 的更新
+
+    beekeeper-studio
   ];
   xdg.desktopEntries.maestro-studio = {
     name = "Maestro Studio";
