@@ -6,11 +6,7 @@
 }:
 
 let
-  # 为 nixpkgs-latest 创建一个允许 unfree 包的实例
-  pkgs-latest = import inputs.nixpkgs-latest {
-    system = "x86_64-linux";
-    config.allowUnfree = true;
-  };
+
   maestro-studio = pkgs.appimageTools.wrapType2 {
     pname = "maestro-studio";
     version = "latest";
@@ -49,14 +45,14 @@ in
   # 问题出在别处 nix-openclaw 这个第三方 home-manager 模块
   # home.file.".openclaw/openclaw.json".force = true;
 
-  services = {
-    podman = {
-      enable = true;
-      settings.policy = {
-        default = [ { type = "insecureAcceptAnything"; } ];
-      };
-    };
-  };
+  # services = {
+  #   podman = {
+  #     enable = true;
+  #     settings.policy = {
+  #       default = [ { type = "insecureAcceptAnything"; } ];
+  #     };
+  #   };
+  # };
 
   home.packages = with pkgs; [
     gitleaks
@@ -73,15 +69,10 @@ in
     dig
 
     maestro-studio
-    pkgs-latest.maestro
+    maestro
     mitmproxy
     openssl
-    # (nomachine-client.overrideAttrs (old: {
-    #   src = pkgs.fetchurl {
-    #     url = "https://download.nomachine.com/download/9.4/Linux/nomachine_9.4.14_1_x86_64.tar.gz";
-    #     hash = "sha256-tLL8l/UgTiVzGs+mwJeRUlVA8lH72JVogBOEpaSr2AY=";
-    #   };
-    # }))
+
     maven
     jdt-language-server
 
@@ -106,6 +97,9 @@ in
     (inputs.home-manager.packages.${pkgs.stdenv.hostPlatform.system}.default) # 单独执行 hm 的更新
 
     beekeeper-studio
+    basedpyright
+    nodejs
+    inputs.serena.packages.${pkgs.stdenv.hostPlatform.system}.serena
   ];
   xdg.desktopEntries.maestro-studio = {
     name = "Maestro Studio";

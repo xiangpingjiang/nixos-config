@@ -101,7 +101,7 @@ in
         "vscjava.vscode-maven"
         "vscjava.vscode-java-dependency"
         "eamodio.gitlens"
-        "anthropic.claude-code"
+        # "anthropic.claude-code"
       ];
       userSettings = vscodeBaseSettings;
     };

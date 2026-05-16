@@ -29,8 +29,16 @@
     qrca
   ];
 
-  # virtualisation.waydroid.enable = true;
-  # virtualisation.waydroid.package = pkgs.waydroid-nftables;
-  # networking.nftables.enable = true;
+  #for sudo podman
+  virtualisation.podman = {
+    enable = true;
+  };
+  virtualisation.containers.policy = {
+    default = [
+      {
+        type = "insecureAcceptAnything";
+      }
+    ];
+  };
 
 }

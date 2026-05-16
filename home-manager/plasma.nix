@@ -107,6 +107,7 @@
                 "applications:org.kde.plasma-systemmonitor.desktop"
                 "applications:code.desktop"
                 "applications:chromium-browser.desktop"
+                "applications:org.kde.spectacle.desktop"
               ];
               appearance.showTooltips = true;
             };

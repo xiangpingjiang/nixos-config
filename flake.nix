@@ -13,9 +13,9 @@
     # nixpkgs-chromium-144 = {
     #   url = "github:NixOS/nixpkgs/01d402053f2a5cbd4238d20c7e35ff091ff65f36";
     # };
-    nixpkgs-latest = {
-      url = "github:NixOS/nixpkgs/master";
-    };
+    # nixpkgs-latest = {
+    #   url = "github:NixOS/nixpkgs/master";
+    # };
     agenix = {
       url = "github:ryantm/agenix/main";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -41,6 +41,11 @@
       url = "github:nix-community/nix4vscode/master";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    serena = {
+      url = "github:oraios/serena";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
@@ -50,6 +55,7 @@
       home-manager,
       agenix,
       nix4vscode,
+      serena,
       ...
     }@inputs:
     let
