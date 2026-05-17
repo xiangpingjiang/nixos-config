@@ -1,14 +1,14 @@
 { pkgs, ... }:
 
 let
-  version = "0.8.31";
+  version = "0.8.38";
   deepseek-tui = pkgs.stdenv.mkDerivation {
     pname = "deepseek-tui";
     inherit version;
 
     src = pkgs.fetchurl {
       url = "https://github.com/Hmbown/DeepSeek-TUI/releases/download/v${version}/deepseek-tui-linux-x64";
-      hash = "sha256-y+elQxSlAdKU9Ig0yoCaq+htWNNMAq6EEoSOcXpePGM="; # pkgs.lib.fakeHash
+      hash = "sha256-D2Jq3n7OiOKzN/+5pXHErukyZW9BVu04Q/5dEVOh6S4="; # pkgs.lib.fakeHash 不带引号
     };
 
     dontUnpack = true;

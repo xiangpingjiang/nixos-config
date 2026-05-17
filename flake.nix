@@ -1,5 +1,5 @@
 {
-  description = "A very basic flake";
+  description = "my nixos flake";
 
   inputs = {
     nixpkgs = {
@@ -10,12 +10,6 @@
       url = "github:nix-community/home-manager/master";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    # nixpkgs-chromium-144 = {
-    #   url = "github:NixOS/nixpkgs/01d402053f2a5cbd4238d20c7e35ff091ff65f36";
-    # };
-    # nixpkgs-latest = {
-    #   url = "github:NixOS/nixpkgs/master";
-    # };
     agenix = {
       url = "github:ryantm/agenix/main";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -32,11 +26,6 @@
       url = "github:numtide/llm-agents.nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    # nix-openclaw = {
-    #   url = "github:openclaw/nix-openclaw";
-    #   inputs.nixpkgs.follows = "nixpkgs";
-    #   inputs.home-manager.follows = "home-manager";
-    # };
     nix4vscode = {
       url = "github:nix-community/nix4vscode/master";
       inputs.nixpkgs.follows = "nixpkgs";

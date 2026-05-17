@@ -33,26 +33,13 @@ in
     ./develop/codex.nix
     ./develop/opencode.nix
     ./develop/deepseek-tui.nix
-    # inputs.nix-openclaw.homeManagerModules.openclaw
+    ./develop/programs.nix
   ];
   nix.package = lib.mkDefault pkgs.nix;
   nix.settings.experimental-features = [
     "nix-command"
     "flakes"
   ];
-
-  # backupFileExtension 的位置没有问题
-  # 问题出在别处 nix-openclaw 这个第三方 home-manager 模块
-  # home.file.".openclaw/openclaw.json".force = true;
-
-  # services = {
-  #   podman = {
-  #     enable = true;
-  #     settings.policy = {
-  #       default = [ { type = "insecureAcceptAnything"; } ];
-  #     };
-  #   };
-  # };
 
   home.packages = with pkgs; [
     gitleaks
@@ -100,6 +87,14 @@ in
     basedpyright
     nodejs
     inputs.serena.packages.${pkgs.stdenv.hostPlatform.system}.serena
+    lx-music-desktop
+    nixfmt
+    nil
+    hugo
+    nix-init
+    go
+    gcc
+    python3
   ];
   xdg.desktopEntries.maestro-studio = {
     name = "Maestro Studio";

@@ -45,14 +45,6 @@
       ];
       checkReversePath = false;
     };
-
-    # proxy = {
-    #   default = "http://127.0.0.1:7897";
-    #   httpsProxy = "http://127.0.0.1:7897";
-    #   httpProxy = "http://127.0.0.1:7897";
-    #   allProxy = "http://127.0.0.1:7897";
-    #   noProxy = "127.0.0.1,localhost";
-    # };
   };
 
 }

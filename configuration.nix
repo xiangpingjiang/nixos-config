@@ -19,10 +19,10 @@
       "https://nix-community.cachix.org"
       # 优先使用国内镜像
 
-      "https://mirrors.cernet.edu.cn/nix-channels/store"
-      "https://mirrors.ustc.edu.cn/nix-channels/store"
-      "https://mirrors.tuna.tsinghua.edu.cn/nix-channels/store"
-      "https://mirror.nju.edu.cn/nix-channels/store"
+      # "https://mirrors.cernet.edu.cn/nix-channels/store"
+      # "https://mirrors.ustc.edu.cn/nix-channels/store"
+      # "https://mirrors.tuna.tsinghua.edu.cn/nix-channels/store"
+      # "https://mirror.nju.edu.cn/nix-channels/store"
 
     ];
 
