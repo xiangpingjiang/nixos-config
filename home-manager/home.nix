@@ -22,7 +22,20 @@ in
   home.homeDirectory = "/home/xpj";
   home.stateVersion = "26.05";
   nixpkgs.config.allowUnfree = true;
-  nixpkgs.overlays = [ inputs.nix4vscode.overlays.default ];
+  nixpkgs.overlays = [
+    inputs.nix4vscode.overlays.default
+
+    # Bump this when Maestro releases a newer CLI before nixpkgs catches up.
+    (final: prev: {
+      maestro = prev.maestro.overrideAttrs (_old: rec {
+        version = "2.6.0";
+        src = prev.fetchurl {
+          url = "https://github.com/mobile-dev-inc/maestro/releases/download/cli-${version}/maestro.zip";
+          hash = "sha256-gBhRBaXX4ifjs/vPIl9FsxJQjqZ2qfyOGxqhysi5/24="; # lib.fakeHash
+        };
+      });
+    })
+  ];
   imports = [
     ./plasma.nix
     ./rclone.nix
@@ -31,7 +44,7 @@ in
     ./develop/vscode.nix
     ./develop/claude-code.nix
     ./develop/codex.nix
-    ./develop/opencode.nix
+    # ./develop/opencode.nix
     ./develop/deepseek-tui.nix
     ./develop/programs.nix
   ];
@@ -95,6 +108,9 @@ in
     go
     gcc
     python3
+    ripgrep # codex 喜欢用
+
+    # jetbrains.idea
   ];
   xdg.desktopEntries.maestro-studio = {
     name = "Maestro Studio";

@@ -59,7 +59,7 @@ in
         "ms-python.python"
         "natqe.reload"
         "eamodio.gitlens"
-        "ms-vscode-remote.remote-containers"
+        # "ms-vscode-remote.remote-containers"
       ];
       userSettings = vscodeBaseSettings;
     };

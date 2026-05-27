@@ -9,6 +9,7 @@
       enable = true;
       settings = {
         # shell-integration = zsh;
+        shell-integration-features = "ssh-env,ssh-terminfo";
         command = "${pkgs.zsh}/bin/zsh";
         theme = "Tomorrow Night Eighties";
         # font-size = 10;
