@@ -33,6 +33,7 @@
           "dirhistory"
           "history"
           "direnv"
+          "kubectl"
         ];
       };
     };

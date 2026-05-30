@@ -111,6 +111,12 @@ in
     ripgrep # codex 喜欢用
 
     # jetbrains.idea
+    dbeaver-bin
+    jq
+    uv
+
+    devpod-desktop
+
   ];
   xdg.desktopEntries.maestro-studio = {
     name = "Maestro Studio";

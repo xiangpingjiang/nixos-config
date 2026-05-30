@@ -105,5 +105,11 @@ in
       ];
       userSettings = vscodeBaseSettings;
     };
+    profiles.ssh = {
+      extensions = pkgs.nix4vscode.forVscode [
+        "ms-vscode-remote.remote-ssh"
+      ];
+      userSettings = vscodeBaseSettings;
+    };
   };
 }

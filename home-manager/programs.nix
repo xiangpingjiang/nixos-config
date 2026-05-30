@@ -22,5 +22,29 @@
     firefox = {
       enable = true;
     };
+    ssh = {
+      enable = true;
+      enableDefaultConfig = false;
+      settings = {
+        "*" = {
+          ServerAliveInterval = 60;
+        };
+        dev75 = {
+          HostName = "10.130.10.75";
+          User = "root";
+          Port = 22;
+        };
+        dev76 = {
+          HostName = "10.130.10.76";
+          User = "ecs-user";
+          Port = 22;
+        };
+        jen = {
+          HostName = "jumpserver.rockflow.ai";
+          User = "xiangpingjiang#localadmin#0d71f23d-8f64-4b71-bbe1-2ca8d0588f50";
+          Port = 2222;
+        };
+      };
+    };
   };
 }
