@@ -36,7 +36,13 @@
     };
     firewall = {
       # localsend use 53317
-      allowedTCPPorts = [ 53317 ];
+      allowedTCPPorts = [
+        53317
+        # Mihomo / Clash
+        7890 # HTTP
+        7891 # SOCKS5
+        7897 # Mixed
+      ];
       allowedUDPPorts = [ 53317 ];
       # enable = false;
       trustedInterfaces = [

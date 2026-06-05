@@ -18,14 +18,14 @@ in
 
   programs.vscode = {
     enable = true;
-    package = pkgs.vscode.override {
-      commandLineArgs = [
-        "--enable-features=UseOzonePlatform"
-        "--ozone-platform=wayland"
-        "--enable-wayland-ime"
-        "--"
-      ];
-    };
+    # package = pkgs.vscode.override {
+    #   commandLineArgs = [
+    #     "--enable-features=UseOzonePlatform"
+    #     "--ozone-platform=wayland"
+    #     "--enable-wayland-ime"
+    #     "--"
+    #   ];
+    # };
     #有些配置必须在 Default 里
     profiles.default = {
       userSettings = {
@@ -101,15 +101,19 @@ in
         "vscjava.vscode-maven"
         "vscjava.vscode-java-dependency"
         "eamodio.gitlens"
-        # "anthropic.claude-code"
       ];
       userSettings = vscodeBaseSettings;
     };
     profiles.ssh = {
       extensions = pkgs.nix4vscode.forVscode [
         "ms-vscode-remote.remote-ssh"
+        "ms-vscode.remote-explorer"
+        "natqe.reload"
       ];
-      userSettings = vscodeBaseSettings;
+
+      userSettings = vscodeBaseSettings // {
+        "remote.SSH.configFile" = "/home/xpj/.ssh/devpod_config";
+      };
     };
   };
 }

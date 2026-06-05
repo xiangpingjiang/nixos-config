@@ -117,6 +117,8 @@ in
 
     devpod-desktop
 
+    sops
+
   ];
   xdg.desktopEntries.maestro-studio = {
     name = "Maestro Studio";

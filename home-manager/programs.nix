@@ -44,6 +44,11 @@
           User = "xiangpingjiang#localadmin#0d71f23d-8f64-4b71-bbe1-2ca8d0588f50";
           Port = 2222;
         };
+        vk = {
+          HostName = "10.65.255.26";
+          User = "vk1";
+          Port = 22;
+        };
       };
     };
   };
