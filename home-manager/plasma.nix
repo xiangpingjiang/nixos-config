@@ -94,6 +94,7 @@
     panels = [
       # Windows-like panel at the bottom
       {
+        screen = 0; # 固定到主屏
         location = "bottom";
         widgets = [
           "org.kde.plasma.kickoff"

@@ -114,9 +114,6 @@ in
     dbeaver-bin
     jq
     uv
-
-    devpod-desktop
-
     sops
 
   ];

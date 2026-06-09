@@ -12,20 +12,17 @@ let
         "path" = "${pkgs.zsh}/bin/zsh";
       };
     };
+    "chat.disableAIFeatures" = true;
+    "extensions.ignoreRecommendations" = true;
+    "chat.agent.enabled" = false;
+    "terminal.integrated.tabs.allowAgentCliTitle" = false;
   };
 in
 {
 
   programs.vscode = {
     enable = true;
-    # package = pkgs.vscode.override {
-    #   commandLineArgs = [
-    #     "--enable-features=UseOzonePlatform"
-    #     "--ozone-platform=wayland"
-    #     "--enable-wayland-ime"
-    #     "--"
-    #   ];
-    # };
+
     #有些配置必须在 Default 里
     profiles.default = {
       userSettings = {
@@ -59,7 +56,6 @@ in
         "ms-python.python"
         "natqe.reload"
         "eamodio.gitlens"
-        # "ms-vscode-remote.remote-containers"
       ];
       userSettings = vscodeBaseSettings;
     };
@@ -111,9 +107,16 @@ in
         "natqe.reload"
       ];
 
-      userSettings = vscodeBaseSettings // {
-        "remote.SSH.configFile" = "/home/xpj/.ssh/devpod_config";
-      };
+      userSettings = vscodeBaseSettings;
+    };
+    profiles.dev_container = {
+      extensions = pkgs.nix4vscode.forVscode [
+        "ms-vscode-remote.remote-containers"
+        "ms-kubernetes-tools.vscode-kubernetes-tools"
+        "redhat.vscode-yaml"
+        "natqe.reload"
+      ];
+      userSettings = vscodeBaseSettings;
     };
   };
 }
