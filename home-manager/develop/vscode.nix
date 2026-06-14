@@ -36,6 +36,7 @@ in
       extensions = pkgs.nix4vscode.forVscode [
         "jnoortheen.nix-ide"
         "natqe.reload"
+        "kdl-org.kdl"
       ];
       userSettings = vscodeBaseSettings // {
         "nix.enableLanguageServer" = true;

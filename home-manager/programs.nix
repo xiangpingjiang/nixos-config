@@ -26,6 +26,12 @@
       enable = true;
       enableDefaultConfig = false;
       settings = {
+        "github.com" = {
+          HostName = "ssh.github.com";
+          User = "git";
+          Port = 443;
+          IdentitiesOnly = true;
+        };
         "*" = {
           ServerAliveInterval = 60;
         };

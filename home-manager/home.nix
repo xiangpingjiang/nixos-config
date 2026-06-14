@@ -115,6 +115,9 @@ in
     jq
     uv
     sops
+    mihomo # 防止断网
+
+    kdlfmt
 
   ];
   xdg.desktopEntries.maestro-studio = {

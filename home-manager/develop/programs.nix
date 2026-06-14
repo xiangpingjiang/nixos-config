@@ -59,33 +59,5 @@
 
   };
 
-  xdg.configFile."zellij/layouts/dev.kdl".text = ''
-    layout {
-      default_tab_template {
-        pane size=1 borderless=true {
-          plugin location="zellij:tab-bar"
-        }
-
-        children
-
-        pane size=2 borderless=true {
-          plugin location="zellij:status-bar"
-        }
-      }
-
-      tab name="editor" {
-        pane
-        pane split_direction="vertical" {
-          pane command="htop"
-          pane command="lazygit"
-        }
-      }
-
-      tab name="logs" {
-        pane command="journalctl" {
-          args "-f"
-        }
-      }
-    }
-  '';
+  xdg.configFile."zellij/layouts/dev.kdl".text = builtins.readFile ./zellij/dev.kdl;
 }
