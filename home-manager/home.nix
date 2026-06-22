@@ -96,7 +96,6 @@ in
 
     (inputs.home-manager.packages.${pkgs.stdenv.hostPlatform.system}.default) # 单独执行 hm 的更新
 
-    beekeeper-studio
     basedpyright
     nodejs
     inputs.serena.packages.${pkgs.stdenv.hostPlatform.system}.serena

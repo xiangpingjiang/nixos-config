@@ -23,6 +23,9 @@
           textconv = "/home/xpj/.nix-profile/bin/sops -d";
           binary = true;
         };
+        alias = {
+          acp = "!git add -A && git commit -m \"u\" && git push";
+        };
       };
     };
 

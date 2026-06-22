@@ -56,9 +56,13 @@ in
         "ms-python.vscode-pylance"
         "ms-python.python"
         "natqe.reload"
-        "eamodio.gitlens"
+        "mk12.better-git-line-blame"
+        "anthropic.claude-code"
       ];
-      userSettings = vscodeBaseSettings;
+
+      userSettings = vscodeBaseSettings // {
+        "claudeCode.preferredLocation" = "panel";
+      };
     };
     profiles.golang = {
       extensions = pkgs.nix4vscode.forVscode [
@@ -85,6 +89,7 @@ in
       extensions = pkgs.nix4vscode.forVscode [
         "natqe.reload"
         "grafana.vscode-jsonnet"
+        "mk12.better-git-line-blame"
       ];
       userSettings = vscodeBaseSettings;
     };
@@ -97,7 +102,7 @@ in
         "vscjava.vscode-java-test"
         "vscjava.vscode-maven"
         "vscjava.vscode-java-dependency"
-        "eamodio.gitlens"
+        "mk12.better-git-line-blame"
       ];
       userSettings = vscodeBaseSettings;
     };

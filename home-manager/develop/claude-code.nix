@@ -40,9 +40,9 @@
           "Read(~/.ssh/**)"
         ];
       };
-      enabledPlugins = {
-        "jdtls-lsp@claude-plugins-official" = true;
-      };
+      # enabledPlugins = {
+      #   "jdtls-lsp@claude-plugins-official" = true;
+      # };
       env = {
         ANTHROPIC_BASE_URL = "https://api.anthropic.com";
       };
