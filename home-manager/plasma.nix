@@ -18,6 +18,44 @@
   };
   programs.plasma = {
     enable = true;
+    immutableByDefault = true;
+
+    powerdevil = {
+      # 接电源时（对应截图 On AC Power）
+      AC = {
+        powerButtonAction = "showLogoutScreen";
+        autoSuspend.action = "nothing";
+        whenLaptopLidClosed = "lockScreen";
+        inhibitLidActionWhenExternalMonitorConnected = true;
+        whenSleepingEnter = "standby";
+        dimDisplay = {
+          enable = true;
+          idleTimeout = 300; # 5 分钟变暗
+        };
+        turnOffDisplay = {
+          idleTimeout = 600; # 10 分钟关屏
+          idleTimeoutWhenLocked = 60; # 锁定后 1 分钟关屏
+        };
+      };
+
+      # 用电池时
+      battery = {
+        powerButtonAction = "showLogoutScreen";
+        autoSuspend.action = "nothing";
+        whenLaptopLidClosed = "lockScreen";
+        inhibitLidActionWhenExternalMonitorConnected = true;
+        whenSleepingEnter = "standby";
+        dimDisplay = {
+          enable = true;
+          idleTimeout = 240; # 4 分钟变暗
+        };
+        turnOffDisplay = {
+          idleTimeout = 300; # 5 分钟关屏
+          idleTimeoutWhenLocked = 60; # 锁定后 1 分钟关屏
+        };
+      };
+    };
+
     window-rules = [
       {
         description = "Insomnia icon fix in task switcher";

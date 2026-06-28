@@ -21,7 +21,7 @@
     # ];
 
     settings = {
-      model = "claude-sonnet-4-6";
+      model = "claude-opus-4-8";
       language = "chinese";
       autoAcceptEdits = false;
       showTurnDuration = true;

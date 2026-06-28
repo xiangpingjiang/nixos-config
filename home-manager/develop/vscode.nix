@@ -37,8 +37,10 @@ in
         "jnoortheen.nix-ide"
         "natqe.reload"
         "kdl-org.kdl"
+        "anthropic.claude-code"
       ];
       userSettings = vscodeBaseSettings // {
+        "claudeCode.preferredLocation" = "panel";
         "nix.enableLanguageServer" = true;
         "editor.formatOnSave" = true;
         "nix.serverPath" = "nil";
@@ -82,8 +84,12 @@ in
       extensions = pkgs.nix4vscode.forVscode [
         "natqe.reload"
         "shd101wyy.markdown-preview-enhanced"
+        "foam.foam-vscode"
+        "anthropic.claude-code"
       ];
-      userSettings = vscodeBaseSettings;
+      userSettings = vscodeBaseSettings // {
+        "claudeCode.preferredLocation" = "panel";
+      };
     };
     profiles.jsonnet = {
       extensions = pkgs.nix4vscode.forVscode [
@@ -120,6 +126,15 @@ in
         "ms-vscode-remote.remote-containers"
         "ms-kubernetes-tools.vscode-kubernetes-tools"
         "redhat.vscode-yaml"
+        "natqe.reload"
+      ];
+      userSettings = vscodeBaseSettings;
+    };
+    profiles.sql = {
+      extensions = pkgs.nix4vscode.forVscode [
+        "mtxr.sqltools"
+        "mtxr.sqltools-driver-mysql"
+        "ultram4rine.sqltools-clickhouse-driver"
         "natqe.reload"
       ];
       userSettings = vscodeBaseSettings;

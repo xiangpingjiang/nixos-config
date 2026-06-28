@@ -12,7 +12,7 @@ let
     version = "latest";
     src = pkgs.fetchurl {
       url = "https://studio.maestro.dev/MaestroStudio.AppImage";
-      sha256 = "sha256-8S3tqdykR11a1feOlNCiSqu0SCEcnkjJU45byIEymEA=";
+      sha256 = "sha256-/peSlEt6+OoESVReTL+refh1hyagfkLhzbA0hMZwrPg=";
     };
   };
 in
@@ -24,17 +24,6 @@ in
   nixpkgs.config.allowUnfree = true;
   nixpkgs.overlays = [
     inputs.nix4vscode.overlays.default
-
-    # Bump this when Maestro releases a newer CLI before nixpkgs catches up.
-    (final: prev: {
-      maestro = prev.maestro.overrideAttrs (_old: rec {
-        version = "2.6.0";
-        src = prev.fetchurl {
-          url = "https://github.com/mobile-dev-inc/maestro/releases/download/cli-${version}/maestro.zip";
-          hash = "sha256-gBhRBaXX4ifjs/vPIl9FsxJQjqZ2qfyOGxqhysi5/24="; # lib.fakeHash
-        };
-      });
-    })
   ];
   imports = [
     ./plasma.nix
@@ -63,6 +52,7 @@ in
     android-tools
     kdePackages.krfb
     kdePackages.krdc
+    kdePackages.qrca
 
     devenv
     direnv
@@ -109,7 +99,6 @@ in
     python3
     ripgrep # codex 喜欢用
 
-    # jetbrains.idea
     dbeaver-bin
     jq
     uv

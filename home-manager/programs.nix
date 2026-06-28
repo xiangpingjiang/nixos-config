@@ -5,9 +5,6 @@
 
   programs = {
 
-    obsidian = {
-      enable = true;
-    };
     chromium = {
       enable = true;
       # package = inputs.nixpkgs-chromium-144.legacyPackages.x86_64-linux.chromium;
