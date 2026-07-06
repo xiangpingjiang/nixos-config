@@ -16,6 +16,10 @@
       inputs.home-manager.follows = "home-manager";
       inputs.darwin.follows = "";
     };
+    sops-nix = {
+      url = "github:Mic92/sops-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     plasma-manager = {
       url = "github:nix-community/plasma-manager/trunk";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -60,6 +64,7 @@
           modules = [
             ./configuration.nix
             agenix.nixosModules.default
+            inputs.sops-nix.nixosModules.sops
             {
               environment.systemPackages = [ agenix.packages.x86_64-linux.default ];
             }

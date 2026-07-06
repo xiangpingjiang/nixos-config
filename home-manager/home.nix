@@ -106,6 +106,8 @@ in
     mihomo # 防止断网
 
     kdlfmt
+    mpv
+    mongodb-compass
 
   ];
   xdg.desktopEntries.maestro-studio = {

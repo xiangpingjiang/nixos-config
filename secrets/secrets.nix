@@ -22,14 +22,6 @@ in
     armor = true;
   };
 
-  "mihomo_config.age" = {
-    publicKeys = [ my_user ];
-    armor = true;
-    mode = "770";
-    owner = "mihomo";
-    group = "mihomo";
-  };
-
   "openclaw_channel_telegram.age" = {
     publicKeys = [ my_user ];
     armor = true;

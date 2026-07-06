@@ -41,7 +41,10 @@
       # 用电池时
       battery = {
         powerButtonAction = "showLogoutScreen";
-        autoSuspend.action = "nothing";
+        autoSuspend = {
+          action = "sleep";
+          idleTimeout = 600; # 10 分钟不动则休眠
+        };
         whenLaptopLidClosed = "lockScreen";
         inhibitLidActionWhenExternalMonitorConnected = true;
         whenSleepingEnter = "standby";

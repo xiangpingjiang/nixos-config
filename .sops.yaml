@@ -1,0 +1,9 @@
+creation_rules:
+  - path_regex: .*\.enc\.yaml$
+    encrypted_comment_regex: 'sops:enc'
+    mac_only_encrypted: true
+    age:
+      # X25519 age 收件人（ssh-to-age 转换 id_ed25519 得到）——供 sops-nix 激活时解密
+      - age15zxmd8a48rqnl82jlhe96j6fl54kr8j9fvkt74tj0xhc83ddpc8stzk2g0
+      # 原生 ssh-ed25519 收件人——供本机用 ~/.ssh/id_ed25519 手动 sops 编辑
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICzxijLWHR3Xpf1r/xcmqhCkVUh5F62VbBNLdNuDE7oF xpj@nixos
