@@ -11,7 +11,10 @@
     profiles = {
       "xpj" = {
         command = "${pkgs.zsh}/bin/zsh";
-        font.size = 13;
+        font = {
+          name = "Monospace";
+          size = 13;
+        };
         colorScheme = "Black on White";
       };
     };

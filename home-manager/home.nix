@@ -47,7 +47,6 @@ in
     gitleaks
     kubectl
     kind
-    claude-code-router
     scrcpy
     android-tools
     kdePackages.krfb
@@ -107,7 +106,8 @@ in
 
     kdlfmt
     mpv
-    mongodb-compass
+
+    ory
 
   ];
   xdg.desktopEntries.maestro-studio = {

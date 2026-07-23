@@ -1,6 +1,7 @@
 {
   pkgs,
   config,
+  lib,
   ...
 }:
 let
@@ -9,21 +10,17 @@ let
     initialize = true;
     passwordFile = config.age.secrets.restic_repository.path;
     rcloneConfigFile = "/home/xpj/.config/rclone/rclone.conf";
-    # Maintain backups
-    pruneOpts = [
-      "--keep-daily 7" # 保留最近 7 天的每日备份
-      "--keep-weekly 4" # 保留最近 4 周的每周备份
-      "--keep-monthly 3" # 保留最近 3 个月的每月备份
-    ];
+    # 遇到锁时最多等 3 分钟再报错，避免与其它任务的共享锁瞬时冲突。
+    # 注意：prune 已从此处剥离，改由下面每日的 restic-prune 任务统一执行。
+    extraBackupArgs = [ "--retry-lock=3m" ];
   };
 in
 {
   services.mihomo = {
     enable = true;
-    tunMode = true;
+    tunMode = false;
     webui = pkgs.metacubexd;
     configFile = config.sops.secrets.mihomo_config.path;
-    # configFile = "/home/xpj/Projects/nixos-config/mihomo_test_config.yaml" 测试调试用;
   };
 
   services.restic = {
@@ -32,7 +29,7 @@ in
         paths = [ "/home/xpj/Documents/sync/kp/" ];
         repository = "rclone:kp_cst:/kp/"; # 'kp_cst' matches rclone config name, kp created before
         timerConfig = {
-          OnCalendar = "*:0/3"; # *：代表 “每一小时”（小时维度不限制） :：分隔小时和分钟 0/3：代表 “从第 0 分钟开始，每隔 3 分钟”
+          OnCalendar = "*:0/10"; # 从第 0 分钟起，每 10 分钟一次（:00 :10 :20 …）
         };
       };
 
@@ -40,7 +37,7 @@ in
         paths = [ "/home/xpj/Documents/sync/kp/" ];
         repository = "rclone:kp_nutstore:/kp/";
         timerConfig = {
-          OnCalendar = "*:1/3";
+          OnCalendar = "*:3/10"; # 从第 3 分钟起，每 10 分钟一次（:03 :13 :23 …）错开
         };
       };
 
@@ -48,11 +45,53 @@ in
         paths = [ "/home/xpj/Documents/sync/kp/" ];
         repository = "rclone:kp_infini:/kp/";
         timerConfig = {
-          OnCalendar = "*:2/3"; # *：代表 “每一小时”（小时维度不限制） :：分隔小时和分钟 2/3：代表 “从第 2 分钟开始，每隔 3 分钟”
+          OnCalendar = "*:6/10"; # 从第 6 分钟起，每 10 分钟一次（:06 :16 :26 …）错开
         };
       };
     };
-    # server.prometheus = true;
+  };
+
+  # 把 forget+prune 从每次备份里剥离，单独每天跑一次，
+  # 大幅降低独占锁的频率（之前那把 4 个月的死锁就来自跟着每 3 分钟备份跑的 prune）。
+  # 仓库列表自动从上面的 services.restic.backups 派生，增删备份时无需同步修改。
+  systemd.services.restic-prune = {
+    description = "restic forget + prune (all kp repos)";
+    after = [ "network-online.target" ];
+    wants = [ "network-online.target" ];
+    path = [ pkgs.rclone ]; # restic 通过 PATH 调用 rclone 后端
+    environment = {
+      RESTIC_PASSWORD_FILE = config.age.secrets.restic_repository.path;
+      RCLONE_CONFIG = "/home/xpj/.config/rclone/rclone.conf";
+      # 服务以 root 运行且无 $HOME，restic 无法定位缓存目录（报 "neither
+      # $XDG_CACHE_HOME nor $HOME are defined" 并放弃 prune）。用 systemd 托管的
+      # CacheDirectory 显式指定缓存路径。
+      RESTIC_CACHE_DIR = "/var/cache/restic-prune";
+    };
+    serviceConfig = {
+      Type = "oneshot";
+      CacheDirectory = "restic-prune"; # systemd 创建并管理 /var/cache/restic-prune
+    };
+    script =
+      let
+        repos = lib.mapAttrsToList (_: b: b.repository) config.services.restic.backups;
+      in
+      ''
+        for repo in ${lib.escapeShellArgs repos}; do
+          echo "== forget+prune $repo =="
+          ${pkgs.restic}/bin/restic -r "$repo" forget --prune \
+            --keep-daily 7 --keep-weekly 4 --keep-monthly 3 \
+            --retry-lock 10m || echo "!! prune 失败: $repo（继续下一个仓库）"
+        done
+      '';
+  };
+
+  systemd.timers.restic-prune = {
+    wantedBy = [ "timers.target" ];
+    timerConfig = {
+      OnCalendar = "Mon,Thu *-*-* 04:00:00"; # 每周一、周四凌晨 4 点（一周两次）
+      Persistent = true; # 关机错过后，开机补跑一次
+      RandomizedDelaySec = "20m"; # 随机延迟，避免与其它定时任务撞点
+    };
   };
 
   # Enable the X11 windowing system.

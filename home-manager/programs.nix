@@ -47,6 +47,11 @@
           User = "xiangpingjiang#localadmin#0d71f23d-8f64-4b71-bbe1-2ca8d0588f50";
           Port = 2222;
         };
+        openclaw = {
+          HostName = "jumpserver.rockflow.ai";
+          User = "xiangpingjiang#ecs-user#bf7eff4f-dd9a-46bc-9a43-1eb1dd60d0d8";
+          Port = 2222;
+        };
         vk = {
           HostName = "10.65.255.26";
           User = "vk1";
