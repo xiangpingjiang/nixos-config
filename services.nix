@@ -17,8 +17,8 @@ let
 in
 {
   services.mihomo = {
-    enable = true;
-    tunMode = false;
+    enable = false;
+    tunMode = true;
     webui = pkgs.metacubexd;
     configFile = config.sops.secrets.mihomo_config.path;
   };

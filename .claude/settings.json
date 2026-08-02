@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(curl -fsSL https://raw.githubusercontent.com/nix-community/plasma-manager/b967e042896de0f64513d4596e3d1f3eae445d1c/modules/powerdevil.nix)",
-      "Bash(curl -fsSL https://raw.githubusercontent.com/nix-community/plasma-manager/a524a6160e6df89f7673ba293cf7d78b559eb1a5/modules/powerdevil.nix)",
-      "Bash(nix-instantiate --parse home-manager/plasma.nix)"
-    ]
-  }
-}

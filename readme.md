@@ -4,9 +4,24 @@ This repository contains my NixOS system configurations.
 nixos + flake + home manager 
 
 
-system + hm update:  
-sudo nixos-rebuild  switch  --flake  -vv   
+system update (configuration.nix only, does NOT apply home-manager):
 
+    sudo nixos-rebuild  switch  --flake  -vv   
 
-hm update: 
-home-manager switch --flake . -b backup -v  
+home-manager update (home-manager/ only):
+
+    home-manager switch --flake . -b backup -v  
+
+If both changed, run both.
+
+## Troubleshooting
+
+Panel moved to the built-in screen / wrong primary display (KWin saved duplicate
+output priorities after monitor hotplug, lid open/close, or Feishu screen-share
+virtual outputs). Use the uuid, not the connector name — the name itself drifts
+between reboots (DP-2 -> DP-1), the uuid is stable:
+
+    # uuid of the current external monitor; re-check with `kscreen-doctor -o` after changing monitors
+    kscreen-doctor output.73ad35c6-a068-4f37-a2c0-99a1fedd7060.priority.1 output.eDP-1.priority.2
+
+Check with `kscreen-doctor -o` — each output's priority should be unique.
