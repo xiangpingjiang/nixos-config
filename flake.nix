@@ -44,7 +44,7 @@
       # 钉死 rev：上游没有任何 binary cache，dbx-cli/dbx-desktop 都是本地编译（Rust+Tauri，代价大），
       # 不钉的话每次 nix flake update 都会拉最新 rev 触发重编。
       # 升级步骤：改这里的 rev → 重新 prefetch home.nix 里 cargoDeps 的 outputHashes → rebuild
-      url = "github:t8y2/dbx/916ac4399f02a9b0eb261c08a2a479eca7d66820";
+      url = "github:t8y2/dbx/2f3a32955c1db9173258a59ce0095e1d01bf7e51";
       # 不要 follows nixpkgs：会改变 derivation hash，导致已有本地构建全部作废
     };
   };

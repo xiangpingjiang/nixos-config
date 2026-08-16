@@ -43,6 +43,38 @@ let
       esac
     ' claude-notify-click "$@" >/dev/null 2>&1
   '';
+  # kubectl 黑名单守卫:命令里同时出现 kubectl 和 config_sg(生产 SG 集群)时,
+  # 解析每个 kubectl 调用的子命令,不在只读白名单内的(apply/delete/exec/scale/...)
+  # 返回 permissionDecision=ask 强制弹框询问;纯读取(get/describe/logs/...)不打扰。
+  # 之所以用 hook 而不用 permissions.ask 规则:--kubeconfig 位置可变、"非读取"动词
+  # 枚举不全,前缀匹配表达不了"读之外全问"这个语义。
+  kubectlGuard = pkgs.writeShellScript "claude-kubectl-guard" ''
+    cmd=$(${pkgs.jq}/bin/jq -r '.tool_input.command // ""')
+    case "$cmd" in *config_sg*) ;; *) exit 0 ;; esac
+    case "$cmd" in *kubectl*) ;; *) exit 0 ;; esac
+    state=idle skip=0 bad=""
+    for tok in $cmd; do
+      [ "$skip" = 1 ] && { skip=0; continue; }
+      case "$state" in
+        idle) case "$tok" in kubectl|*/kubectl) state=verb ;; esac ;;
+        verb)
+          case "$tok" in
+            # 这些全局 flag 带独立参数,跳过参数本身再找子命令
+            --kubeconfig|--context|--namespace|-n|--cluster|--user|--server) skip=1 ;;
+            -*) ;;
+            *)
+              case "$tok" in
+                # 只读子命令白名单,其余一律视为需要询问
+                get|describe|logs|top|events|explain|version|api-resources|api-versions|cluster-info|auth|diff|wait|completion) ;;
+                *) bad=$tok ;;
+              esac
+              state=idle ;;
+          esac ;;
+      esac
+    done
+    [ -z "$bad" ] && exit 0
+    printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"kubectl 对 config_sg 集群的非读取操作: %s"}}\n' "$bad"
+  '';
 in
 {
   programs.claude-code = {
@@ -59,26 +91,37 @@ in
       autoAcceptEdits = false;
       showTurnDuration = true;
 
+      # 黑名单模式:bypassPermissions 下所有操作自动放行、不弹任何确认框,
+      # 只有 ask 命中的操作会弹框询问(ask 规则在 bypass 模式下依然强制生效)。
+      # 原来的 allow 列表在此模式下无意义,已删。
+      # 注意:Bash 的规则是前缀匹配,换个写法即可绕过,防误操作可以,防不了刻意规避。
       permissions = {
-        allow = [
-          "Read(/home/xpj/Projects/**)"
-          "Read(/home/xpj/.m2/**)"
-          "Bash(find **)"
-          "Bash(grep **)"
-          "Bash(echo **)"
-          "Bash(pwd)"
-          "Bash(xargs **)"
-        ];
-        deny = [
+        defaultMode = "bypassPermissions";
+        ask = [
+          # SSH 私钥同时是 agenix/sops 的解密钥,读取前先问我
           "Read(~/.ssh/**)"
         ];
       };
+      # bypassPermissions 首次启动会弹一次"风险自担"确认框,这里预先接受掉
+      skipDangerousModePermissionPrompt = true;
       env = {
         ANTHROPIC_BASE_URL = "https://api.anthropic.com";
       };
 
       # KDE 桌面通知:通过 notify-send 走 D-Bus,Plasma 原生弹窗,终端和 VS Code 插件面板都生效
       hooks = {
+        # config_sg 集群的 kubectl 非读取操作强制询问(见上方 kubectlGuard 注释)
+        PreToolUse = [
+          {
+            matcher = "Bash";
+            hooks = [
+              {
+                type = "command";
+                command = "${kubectlGuard}";
+              }
+            ];
+          }
+        ];
         # Claude 需要你介入时(权限确认、空闲等待输入等)
         Notification = [
           {

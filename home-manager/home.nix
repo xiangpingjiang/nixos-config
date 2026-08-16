@@ -63,15 +63,7 @@ let
   # 不能 overrideAttrs 上游 derivation:hash 一变 binary cache 全部未命中,Tauri 要本地重编。
   # runCommand 只做零成本包装:bin 用 makeWrapper 改名并注入环境变量(见下);desktop entry 的
   # Exec 原本按 PATH 找 dbx,现在会打到 CLI 上,改写成 wrapper 的绝对路径;图标原样链接。
-  # 上游 916ac43 的 pnpmDeps hash 没跟着 pnpm-lock.yaml 更新(上游 flake.nix 里还是旧值),
-  # 构建报 hash mismatch,这里用实际构建得到的 hash 覆盖。上游修复后可去掉这个 override。
-  dbx-desktop-upstream =
-    (inputs.dbx.packages.${pkgs.stdenv.hostPlatform.system}.dbx-desktop).overrideAttrs
-      (old: {
-        pnpmDeps = old.pnpmDeps.overrideAttrs {
-          outputHash = "sha256-JtyKCHXkgQ/xfPrfi2DhQJ3wzmux40RfNivyfSlhgkY=";
-        };
-      });
+  dbx-desktop-upstream = inputs.dbx.packages.${pkgs.stdenv.hostPlatform.system}.dbx-desktop;
   dbx-desktop = pkgs.runCommand "dbx-desktop-renamed" { nativeBuildInputs = [ pkgs.makeWrapper ]; } ''
     mkdir -p $out/bin $out/share/applications
     # WebKitGTK 默认的 DMA-BUF 硬件渲染在本机(AMD Phoenix 核显 + Wayland)不兼容:

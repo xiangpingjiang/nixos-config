@@ -19,6 +19,17 @@ let
     "chat.agent.enabled" = false;
     "terminal.integrated.tabs.allowAgentCliTitle" = false;
   };
+
+  # Claude Code 扩展的权限模式独立于 ~/.claude/settings.json:
+  # 必须先打开 allowDangerouslySkipPermissions,initialPermissionMode 的
+  # bypassPermissions 才生效,否则扩展会静默回落到 Manual 模式、每次编辑都弹确认框。
+  # 与 claude-code.nix 的 defaultMode = "bypassPermissions" 对齐,
+  # settings.json 里的 ask 规则(SSH 私钥)和 kubectl hook 兜底在扩展里依然生效。
+  claudeCodeSettings = {
+    "claudeCode.preferredLocation" = "panel";
+    "claudeCode.initialPermissionMode" = "bypassPermissions";
+    "claudeCode.allowDangerouslySkipPermissions" = true;
+  };
 in
 {
 
@@ -42,8 +53,7 @@ in
         "kdl-org.kdl"
         "anthropic.claude-code"
       ];
-      userSettings = vscodeBaseSettings // {
-        "claudeCode.preferredLocation" = "panel";
+      userSettings = vscodeBaseSettings // claudeCodeSettings // {
         "nix.enableLanguageServer" = true;
         "editor.formatOnSave" = true;
         "nix.serverPath" = "nil";
@@ -65,9 +75,7 @@ in
         "anthropic.claude-code"
       ];
 
-      userSettings = vscodeBaseSettings // {
-        "claudeCode.preferredLocation" = "panel";
-      };
+      userSettings = vscodeBaseSettings // claudeCodeSettings;
     };
     profiles.golang = {
       extensions = pkgs.nix4vscode.forVscode [
@@ -90,9 +98,7 @@ in
         "foam.foam-vscode"
         "anthropic.claude-code"
       ];
-      userSettings = vscodeBaseSettings // {
-        "claudeCode.preferredLocation" = "panel";
-      };
+      userSettings = vscodeBaseSettings // claudeCodeSettings;
     };
     profiles.jsonnet = {
       extensions = pkgs.nix4vscode.forVscode [
