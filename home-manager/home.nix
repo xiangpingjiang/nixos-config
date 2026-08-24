@@ -32,11 +32,11 @@ let
       # dbx 更新换了 rev 后需要重新 nix-prefetch-git(hash 和版本号都可能变)。
       outputHashes = {
         "mysql-common-derive-0.32.2" = "sha256-fw1rDLNh0BByLHjS8Cgc7KQxdj3N51HVMHXvRyETsas=";
-        "mysql_async-0.37.0" = "sha256-WNp8cdlnoyE4nzwGDhibqLYQbRz9YrsITis59TId5K0=";
+        "mysql_async-0.37.0" = "sha256-zIMZitF9fU6wkeuGAv4LJv80bCWbvmUkgQ1/G5MjDv8=";
         "mysql_common-0.38.0" = "sha256-fw1rDLNh0BByLHjS8Cgc7KQxdj3N51HVMHXvRyETsas=";
-        "postgres-protocol-0.6.12" = "sha256-HRbYVSD7iIwG3m1tOGoIZy0xAZwALWIpTtakVSYPIYI=";
-        "postgres-types-0.2.14" = "sha256-HRbYVSD7iIwG3m1tOGoIZy0xAZwALWIpTtakVSYPIYI=";
-        "tokio-postgres-0.7.18" = "sha256-HRbYVSD7iIwG3m1tOGoIZy0xAZwALWIpTtakVSYPIYI=";
+        "postgres-protocol-0.6.12" = "sha256-ybf+2siiLokb2iylFEhmLAFCFmbjSKF+zNdH93LggkM=";
+        "postgres-types-0.2.14" = "sha256-ybf+2siiLokb2iylFEhmLAFCFmbjSKF+zNdH93LggkM=";
+        "tokio-postgres-0.7.18" = "sha256-ybf+2siiLokb2iylFEhmLAFCFmbjSKF+zNdH93LggkM=";
       };
     };
     # 只编译 cli 这个 crate,不碰 desktop/web
@@ -52,7 +52,11 @@ let
     buildInputs = [
       pkgs.fontconfig
       pkgs.freetype
+      pkgs.openssl
     ];
+    # 0.4.69 起某个依赖启用了 openssl-sys 的 vendored 特性(源码编译 OpenSSL,需要 perl),
+    # 用 OPENSSL_NO_VENDOR 强制改链 nixpkgs 的 openssl,更快也更省
+    env.OPENSSL_NO_VENDOR = 1;
     # 数据库相关测试需要外部服务,跳过
     doCheck = false;
     # 二进制保持原名 dbx:官方 skill(skills/dbx/SKILL.md)里的命令都是 `dbx ...`,
@@ -77,6 +81,56 @@ let
       $out/share/applications/dbx.desktop \
       --replace-fail 'Exec=dbx' "Exec=$out/bin/dbx-desktop"
   '';
+  # lark-cli 升到上游最新 release,并重建 metaData。两件事都必须自己做:
+  #
+  # 1) 版本:nixos-unstable 里 lark-cli 还钉在 1.0.58(nixpkgs master 已到 1.0.88,
+  #    但 channel 滞后),上游 larksuite/cli 几天一个 tag,差了三十来个版本。
+  #    单独升 nixpkgs 换不来新版,只能在这里覆盖 src/version。
+  #    Go 纯 CLI,本地编译代价不大;这个 drv 上游 cache 里不存在,必然本地构建。
+  # 2) metaData:是个 fetchurl,从飞书线上端点抓 API 定义 JSON。端点内容随飞书服务端
+  #    更新而变,钉的 hash 一过期构建就直接挂(hash mismatch)。这里整块重写而不是
+  #    `old.metaData.overrideAttrs`——old 里的 url 还带着旧 version 的 client_version。
+  #
+  # 升级步骤(四步,顺序固定):
+  #   a. 查最新 tag:gh api repos/larksuite/cli/releases/latest --jq .tag_name
+  #   b. 改下面的 version,重算 src hash:
+  #        nix-prefetch-url --unpack --type sha256 \
+  #          https://github.com/larksuite/cli/archive/refs/tags/v<新版本>.tar.gz
+  #        然后 nix hash convert --hash-algo sha256 --to sri <上一步输出>
+  #   c. 重算 metaData hash(要对 postFetch 归一化后的结果算 —— 原始响应每次都不同,
+  #      URL 里的 client_version 必须跟下面的 version 一致):
+  #        curl -sSL 'https://open.feishu.cn/api/tools/open/api_definition?protocol=meta&client_version=v<新版本>' \
+  #          | jq -S .data > /tmp/m.json && nix hash file --sri --type sha256 /tmp/m.json
+  #   d. vendorHash 留旧值直接 build,go.mod 没动就直接过;动了则报错信息里带正确 hash,抄进来。
+  #
+  # skills 走的是另一条路(flake input lark-skills 跟随 upstream main,见 flake.nix
+  # 和 develop/agent-skills.nix),故意不跟这里共用一份源码:那样每次 skills 刷新都可能
+  # 把一次例行 nix flake update 变成 vendorHash 构建失败。
+  lark-cli = pkgs.lark-cli.overrideAttrs (
+    finalAttrs: _old: {
+      version = "1.0.89";
+
+      src = pkgs.fetchFromGitHub {
+        owner = "larksuite";
+        repo = "cli";
+        tag = "v${finalAttrs.version}";
+        hash = "sha256-ou3k24Xb2jvmUHbpHh1NdMBxxbm2/BpH+AsRrwi2l5Q=";
+      };
+
+      vendorHash = "sha256-WClES7ilNmQ0018Qf13tNHouE/SIwh99MaewZ7VGQ2E=";
+
+      metaData = pkgs.fetchurl {
+        name = "meta_data.json";
+        url = "https://open.feishu.cn/api/tools/open/api_definition?protocol=meta&client_version=v${finalAttrs.version}";
+        hash = "sha256-fPEg0FtoytyuLtyCTt74YA39xmjdeF7jd++lF3w2+Q4=";
+        postFetch = ''
+          ${lib.getExe pkgs.jq} -S ".data" "$out" > normalized
+          mv normalized "$out"
+        '';
+      };
+    }
+  );
+
 in
 {
 
@@ -95,8 +149,8 @@ in
     ./develop/vscode.nix
     ./develop/claude-code.nix
     ./develop/codex.nix
-    # ./develop/opencode.nix
-    ./develop/deepseek-tui.nix
+    ./develop/agent-skills.nix
+
     ./develop/programs.nix
   ];
   nix.package = lib.mkDefault pkgs.nix;
@@ -170,6 +224,8 @@ in
 
     kdlfmt
     mpv
+
+    resvg # SVG -> PNG/PDF 光栅化,画架构图时把 SVG 渲出来自查
 
     ory
     lark-cli

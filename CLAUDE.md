@@ -45,6 +45,21 @@ nixfmt <file.nix>
 
 三个备份任务(cst / nutstore / infini)每 10 分钟一次,`OnCalendar` 分别以 0/3/6 分钟错开,通过 rclone WebDAV 后端(remote 定义在 `home-manager/rclone.nix`)。**forget+prune 被刻意从备份任务中剥离**,由单独的 `restic-prune` systemd timer 每周两次执行,仓库列表自动从 `services.restic.backups` 派生——增删备份仓库时无需同步改 prune 脚本。历史教训:prune 跟着高频备份跑曾造成长达数月的仓库死锁。
 
+### Claude Code Agent Monitor(CCAM,claude-code.nix)
+
+本地会话监控面板 <http://localhost:4820>,由 `ccam-dashboard` systemd user service 托管(声明在 `home-manager/develop/claude-code.nix`),记录每个 Claude Code 会话的事件、工具调用和 token 成本。
+
+**hooks 只能声明式配置**:上游装 hooks 的两个入口(`npm run install-hooks`、以及 server 启动时的自动安装)都是写 `~/.claude/settings.json`,而这个文件是 home-manager 生成的 /nix/store 只读符号链接,两条路都会失败(server 那次包在 try/catch 里静默失败,不影响服务启动)。8 个事件的 hook 条目写在 `claude-code.nix` 的 `settings.hooks` 里,和原有的 notify-send 通知 / kubectl 守卫条目并存(同一事件下是数组,CCAM 的 `matcher = "*"` 与守卫的 `matcher = "Bash"` 可以共存)。
+
+源码有意放在 store 之外的 `~/.local/share/ccam`,不用 `fetchFromGitHub` 钉版本:上游几天一个版本,钉进 store 每次升级都要重算根目录和 client 两份 `npmDepsHash`。代价是**升级不走 `home-manager switch`**:
+
+```bash
+cd ~/.local/share/ccam && git pull && npm install && npm run build
+systemctl --user restart ccam-dashboard
+```
+
+其他注意点:hook 改动只对新开的会话生效(当前会话加载的是旧 settings.json);SQLite 后端走 Node 24 内置的 `node:sqlite`(`better-sqlite3` 只是 optionalDependency,新版 npm 默认不跑依赖的 install script,它的 native 二进制没编译,正好绕开 NixOS 上 prebuild-install 二进制跑不起来的问题);服务只监听 `127.0.0.1:4820`,面板不带认证却能读全部会话记录,别改成 `0.0.0.0`。
+
 ### 面板跑到内置屏 / 主屏漂移(plasma.nix)
 
 `plasma.nix` 里面板的 `screen = 0` 钉的是 Plasma 的 0 号屏,即 KWin 中 priority 1 的输出(主屏)。KWin 按"输出组合 + 盖子开合"在 `~/.config/kwinoutputconfig.json` 里分别存优先级,换口/换显示器、飞书屏幕共享的虚拟输出出现/消失、合盖开盖、唤醒时的输出上线竞态,都可能把优先级写乱(出现并列 priority 1 甚至负数),面板随之跳到内置屏。这不是 Nix 配置问题,修复只需一条命令(立即生效并写回)。注意**外接屏的连接器名本身也会漂**(同一台显示器重启后可能从 DP-2 变成 DP-1),所以命令里用 uuid 而不是名字——uuid 跨改名稳定:

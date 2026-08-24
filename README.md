@@ -14,6 +14,19 @@ home-manager update (home-manager/ only):
 
 If both changed, run both.
 
+## Claude Code Agent Monitor (CCAM)
+
+Local dashboard at <http://localhost:4820>, kept running by the
+`ccam-dashboard` user service. Its hooks are declared in
+`home-manager/develop/claude-code.nix`, but the source tree lives outside the
+store at `~/.local/share/ccam`, so upgrades do NOT go through
+`home-manager switch`:
+
+    cd ~/.local/share/ccam && git pull && npm install && npm run build
+    systemctl --user restart ccam-dashboard
+
+Hook changes only take effect in newly started Claude Code sessions.
+
 ## Troubleshooting
 
 Panel moved to the built-in screen / wrong primary display (KWin saved duplicate

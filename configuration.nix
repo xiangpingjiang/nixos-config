@@ -7,6 +7,32 @@
   ...
 }:
 
+let
+  # 精确字族名 "Noto Sans SC" 的字体。nixpkgs 的 noto-fonts-cjk-sans 提供的族名是
+  # "Noto Sans CJK SC",两者对不上:飞书画板导出的 SVG 里 font-family 写的是
+  # "Noto Sans SC"(飞书线上用的就是这套),resvg 靠 fontdb 按族名精确匹配、不解析
+  # fontconfig 的 alias 规则,族名缺失时只打一条 warning 就把文字整段丢掉——渲出来
+  # 是无字白图却不报错,很容易误判成"渲染没问题"。
+  # 装到系统 fonts.packages 而不是 home.packages:fontdb 是顺着系统 fontconfig 链
+  # 发现 /nix/store 里的字体的,用户侧字体能否被发现未验证。
+  # 版本跟随 noto-fonts-cjk-sans(同为 2.004),tag 钉死——用 raw/main 的话上游一动
+  # hash 就失效,构建直接挂。
+  noto-sans-sc = pkgs.runCommand "noto-sans-sc-2.004" { } ''
+    install -Dm444 ${
+      pkgs.fetchurl {
+        url = "https://github.com/notofonts/noto-cjk/raw/Sans2.004/Sans/SubsetOTF/SC/NotoSansSC-Regular.otf";
+        hash = "sha256-+qbJ32UhFt3nidNRNZ89fl0ihaKyofBKLXJE33BtXqk=";
+      }
+    } $out/share/fonts/opentype/NotoSansSC-Regular.otf
+    install -Dm444 ${
+      pkgs.fetchurl {
+        url = "https://github.com/notofonts/noto-cjk/raw/Sans2.004/Sans/SubsetOTF/SC/NotoSansSC-Bold.otf";
+        hash = "sha256-xstak6uqntyO50Y7frt/QtYY1A5u0velNxyXsLZHZ8A=";
+      }
+    } $out/share/fonts/opentype/NotoSansSC-Bold.otf
+  '';
+in
+
 {
 
   nix.settings = {
@@ -136,6 +162,7 @@
     packages = with pkgs; [
       nerd-fonts.fira-code
       noto-fonts-cjk-sans
+      noto-sans-sc # 见上方 let:给 resvg 渲飞书画板 SVG 补精确族名 "Noto Sans SC"
       # noto-fonts-cjk-serif
       noto-fonts-cjk-serif-static # for typst resume
       noto-fonts-color-emoji
