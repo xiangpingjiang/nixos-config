@@ -16,10 +16,19 @@ let
     };
   };
 
-  # dbx 上游 flake 只输出 desktop(Tauri GUI),CLI 在 workspace 的 crates/dbx-cli 里没被打包,
-  # 这里自行构建。注意:这个 derivation 上游 binary cache 里不存在,dbx 输入更新后必然本地重编
-  # (纯 Rust CLI,不含 Tauri/前端,比 desktop 轻得多)。
-  dbx-cli = pkgs.rustPlatform.buildRustPackage {
+  # dbx-cli 用 dbx 自带的那棵 nixpkgs 构建,不用本仓库的 pkgs。
+  # 理由:上游 flake 只输出 desktop(Tauri GUI),CLI 在 workspace 的 crates/dbx-cli 里没被打包,
+  # 只能自行构建;而这个 derivation 上游 binary cache 里不存在,必然本地编译。如果用本仓库的
+  # pkgs.rustPlatform,rustc/stdenv 随 nixpkgs 一动 derivation hash 就变——哪怕 dbx 的 rev
+  # 钉死、版本号一个字没改,一次例行 nix flake update 也要赔上十几二十分钟重编。
+  # 换成 dbx 自己的 nixpkgs 后,不变量变成:只有 dbx 这个 input(及其整棵子输入树)变化才重编,
+  # 外层 nixpkgs 怎么更新都免疫,跟 dbx-desktop 的行为对齐。
+  # 代价:CLI 链到的是 dbx 那棵 nixpkgs 的 glibc/openssl(比外层滞后),安全更新跟着 dbx 升级走;
+  # desktop 本来就是这个状况,这里只是让 CLI 与它一致。
+  dbxPkgs = import inputs.dbx.inputs.nixpkgs {
+    inherit (pkgs.stdenv.hostPlatform) system;
+  };
+  dbx-cli = dbxPkgs.rustPlatform.buildRustPackage {
     pname = "dbx-cli";
     version =
       (builtins.fromTOML (builtins.readFile "${inputs.dbx}/crates/dbx-cli/Cargo.toml")).package.version;
@@ -45,14 +54,15 @@ let
       "dbx-cli"
     ];
     # cmake: aws-lc-sys(rustls 后端);pkg-config + fontconfig/freetype: dbx-core 的 font-kit
+    # 这些也必须取自 dbxPkgs:漏一个,drv 就又依赖回外层 nixpkgs,上面那条不变量立刻作废。
     nativeBuildInputs = [
-      pkgs.cmake
-      pkgs.pkg-config
+      dbxPkgs.cmake
+      dbxPkgs.pkg-config
     ];
     buildInputs = [
-      pkgs.fontconfig
-      pkgs.freetype
-      pkgs.openssl
+      dbxPkgs.fontconfig
+      dbxPkgs.freetype
+      dbxPkgs.openssl
     ];
     # 0.4.69 起某个依赖启用了 openssl-sys 的 vendored 特性(源码编译 OpenSSL,需要 perl),
     # 用 OPENSSL_NO_VENDOR 强制改链 nixpkgs 的 openssl,更快也更省
@@ -81,52 +91,47 @@ let
       $out/share/applications/dbx.desktop \
       --replace-fail 'Exec=dbx' "Exec=$out/bin/dbx-desktop"
   '';
-  # lark-cli 升到上游最新 release,并重建 metaData。两件事都必须自己做:
+  # lark-cli 升到上游最新 release。nixos-unstable 里还钉在 1.0.88,而上游 larksuite/cli
+  # 几天一个 tag,单独升 nixpkgs 换不来新版,只能在这里覆盖 version/src/metaDataRelease。
+  # Go 纯 CLI,本地编译代价不大;这个 drv 上游 cache 里不存在,必然本地构建。
   #
-  # 1) 版本:nixos-unstable 里 lark-cli 还钉在 1.0.58(nixpkgs master 已到 1.0.88,
-  #    但 channel 滞后),上游 larksuite/cli 几天一个 tag,差了三十来个版本。
-  #    单独升 nixpkgs 换不来新版,只能在这里覆盖 src/version。
-  #    Go 纯 CLI,本地编译代价不大;这个 drv 上游 cache 里不存在,必然本地构建。
-  # 2) metaData:是个 fetchurl,从飞书线上端点抓 API 定义 JSON。端点内容随飞书服务端
-  #    更新而变,钉的 hash 一过期构建就直接挂(hash mismatch)。这里整块重写而不是
-  #    `old.metaData.overrideAttrs`——old 里的 url 还带着旧 version 的 client_version。
+  # metaData(内嵌的开放平台 API 注册表)现在跟随 nixpkgs 的新做法,不再自己 fetchurl
+  # 飞书线上端点:那个端点没有版本化,内容随时漂,钉的 hash 一过期构建就挂,且旧字节
+  # 永久拿不回来(1.0.58 就是这么死的)。新做法是从官方 release 的 linux-amd64 tarball
+  # 里把注册表按字节扫出来(nixpkgs 侧的 extract-meta.py),版本内不可变、可复现。
+  # 所以这里只需要覆盖 metaDataRelease 的 hash,metaData 那层 runCommand 交给 nixpkgs。
   #
-  # 升级步骤(四步,顺序固定):
+  # 升级步骤(三步):
   #   a. 查最新 tag:gh api repos/larksuite/cli/releases/latest --jq .tag_name
-  #   b. 改下面的 version,重算 src hash:
+  #   b. 改下面的 version,重算两个 hash:
   #        nix-prefetch-url --unpack --type sha256 \
   #          https://github.com/larksuite/cli/archive/refs/tags/v<新版本>.tar.gz
-  #        然后 nix hash convert --hash-algo sha256 --to sri <上一步输出>
-  #   c. 重算 metaData hash(要对 postFetch 归一化后的结果算 —— 原始响应每次都不同,
-  #      URL 里的 client_version 必须跟下面的 version 一致):
-  #        curl -sSL 'https://open.feishu.cn/api/tools/open/api_definition?protocol=meta&client_version=v<新版本>' \
-  #          | jq -S .data > /tmp/m.json && nix hash file --sri --type sha256 /tmp/m.json
-  #   d. vendorHash 留旧值直接 build,go.mod 没动就直接过;动了则报错信息里带正确 hash,抄进来。
+  #        nix-prefetch-url --type sha256 \
+  #          https://github.com/larksuite/cli/releases/download/v<新版本>/lark-cli-<新版本>-linux-amd64.tar.gz
+  #        各自 nix hash convert --hash-algo sha256 --to sri <输出>
+  #        (tarball 那个也可以直接抄 release 里 checksums.txt 的 sha256)
+  #   c. vendorHash 留旧值直接 build,go.mod 没动就直接过;动了则报错信息里带正确 hash,抄进来。
   #
   # skills 走的是另一条路(flake input lark-skills 跟随 upstream main,见 flake.nix
   # 和 develop/agent-skills.nix),故意不跟这里共用一份源码:那样每次 skills 刷新都可能
   # 把一次例行 nix flake update 变成 vendorHash 构建失败。
   lark-cli = pkgs.lark-cli.overrideAttrs (
     finalAttrs: _old: {
-      version = "1.0.89";
+      version = "1.0.92";
 
       src = pkgs.fetchFromGitHub {
         owner = "larksuite";
         repo = "cli";
         tag = "v${finalAttrs.version}";
-        hash = "sha256-ou3k24Xb2jvmUHbpHh1NdMBxxbm2/BpH+AsRrwi2l5Q=";
+        hash = "sha256-5cGIgqn28AFXXLrunqsyw5mNfqIBI/TSk5sBx+uTcvs=";
       };
 
       vendorHash = "sha256-WClES7ilNmQ0018Qf13tNHouE/SIwh99MaewZ7VGQ2E=";
 
-      metaData = pkgs.fetchurl {
-        name = "meta_data.json";
-        url = "https://open.feishu.cn/api/tools/open/api_definition?protocol=meta&client_version=v${finalAttrs.version}";
-        hash = "sha256-fPEg0FtoytyuLtyCTt74YA39xmjdeF7jd++lF3w2+Q4=";
-        postFetch = ''
-          ${lib.getExe pkgs.jq} -S ".data" "$out" > normalized
-          mv normalized "$out"
-        '';
+      metaDataRelease = pkgs.fetchurl {
+        name = "lark-cli-${finalAttrs.version}-linux-amd64.tar.gz";
+        url = "https://github.com/larksuite/cli/releases/download/v${finalAttrs.version}/lark-cli-${finalAttrs.version}-linux-amd64.tar.gz";
+        hash = "sha256-7w4ZeZwe3ZTrUtO7XVh+ANCiiY4KS0B6G43GbVYYHvE=";
       };
     }
   );

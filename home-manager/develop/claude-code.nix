@@ -45,6 +45,7 @@ let
       esac
     ' claude-notify-click "$@" >/dev/null 2>&1
   '';
+
   # kubectl 黑名单守卫:命令里同时出现 kubectl 和 config_sg(生产 SG 集群)时,
   # 解析每个 kubectl 调用的子命令,不在只读白名单内的(apply/delete/exec/scale/...)
   # 返回 permissionDecision=ask 强制弹框询问;纯读取(get/describe/logs/...)不打扰。
@@ -131,50 +132,64 @@ in
 
     # 多模型分工(写入全局 ~/.claude/CLAUDE.md):
     # Claude Code 没有内置的"按难度自动换模型"路由(model-config 文档确认),
-    # 这里组合两个机制:主会话跑 Opus + Fable 做 advisor(见 settings.advisorModel),
-    # 再由主模型用 Agent 工具按难度分流:简单任务给更便宜的 haiku/sonnet,
-    # 整块高难度任务给 fable 子代理(Agent 的 model 参数可取 fable,是主模型
-    # 唯一能自主启用 Fable 干活的路径;/model 只有用户能手动执行)。
+    # 所以只剩一条路:主会话跑 Fable,再由主模型用 Agent 工具把机械/常规工作分流给
+    # 更便宜的 haiku/sonnet(Agent 的 model 参数;/model 只有用户能手动执行)。
+    # 2026-09-02 之前是"Opus 主会话 + Fable advisor",现在 Fable 直接当主模型、
+    # advisor 一并删掉(理由见 settings 里的注释)。
     # 改本文件前先查官方文档:https://code.claude.com/docs/(页面索引在 /docs/llms.txt)
+    #
+    # 后两节(回答风格 / 工具使用)是评估 caveman、context-mode 两个 token 优化项目后的留存物。
+    # 实测本机近 30 天:assistant output 里 72% 的字符是工具参数和代码(这类项目一律不压),
+    # 散文只占 22%;tool_result 里 MCP 只占 1.09%,大头是 Read(59%)和 Bash(37%)。
+    # 两者的招牌收益(caveman 的 65%、context-mode 的 98%)都落不到本机,不值得装,
+    # 但各有一条规则有真实增量,直接写进 context:零安装,也不额外占 context(本文件本来就常驻)。
     context = ''
       # 模型分工策略(节省 token 费用)
 
-      主会话运行在 Opus,并配置了 Fable 作为 advisor。分工原则:
+      主会话运行在 Fable,没有配 advisor:advisor 要求它不弱于主模型,主会话已经是 Fable
+      时它只能是"另一个 Fable 复核",每次还要完整重读对话且不走缓存,不划算。
+      所以省钱全靠往下委派:
 
-      - **advisor(Fable)** —— 关键决策点主动咨询:确定技术方案前、
-        同一错误反复出现时、宣布任务完成前、安全/密钥相关改动前。
-        它能看到完整对话;注意每次咨询都会完整重读对话且不走缓存,别滥用。
       - **haiku(Agent 工具委派,显式传 model 参数)** —— 机械性工作:
         代码/文件搜索(配 Explore agent)、批量小改动、跑命令并汇总输出、
         格式转换、按明确清单执行的操作。
       - **sonnet(Agent 工具委派,显式传 model 参数)** —— 常规子任务:
         普通编码修改、写测试、常见 bug 修复、资料调研与总结。
-      - **fable(Agent 工具委派,显式传 model 参数)** —— 整块的高难度任务:
-        大型重构、跨文件迁移、疑难 debug、深度调研。这是唯一不需要用户手动
-        /model 就能让 Fable 真正干活的路径,由主模型自己判断是否启用。
-        注意子代理跑在隔离上下文里:看不到当前对话,只拿得到 prompt 里写的东西,
-        中途也无法追加信息,所以只在任务能一次性描述清楚时用。
-      - **主会话自己做(opus)** —— 需要较强推理或完整上下文的工作:
-        方案设计、复杂 debug、跨文件改动的把关与收尾。
+      - **主会话自己做(fable)** —— 需要较强推理或完整上下文的工作:
+        方案设计、疑难 debug、跨文件改动的把关与收尾。
 
       规则:
+      - 主会话每一轮都按 Fable 计费,是全场最贵的一档,能下放的就下放:
+        搜索、批量改动、跑命令看输出这类活儿默认交给 haiku/sonnet,不要自己埋头做。
       - 委派时把上下文和验收标准写全,避免便宜模型来回试错反而更费 token。
+      - 子代理跑在隔离上下文里:看不到当前对话,只拿得到 prompt 里写的东西,中途也无法
+        追加信息,所以只在任务能一次性描述清楚时委派;打不包的就自己做。
       - 一两步就能完成的事不必委派,直接做(委派本身也有开销)。
       - 便宜模型返回的结果要过目,不放心的部分自己复核,不要盲信。
-      - 遇到整块的高难度任务,先判断能否一次性描述清楚:能就委派给 fable 子代理;
-        打不包(需要边做边对齐、依赖当前对话上下文)再提醒用户手动 /model fable。
+
+      # 回答风格
+
+      - 不写工具调用旁白(「我来看一下…」「接下来我要…」),直接调用。
+      - 不用装饰性表格和 emoji;表格只在真的是二维数据时用。
+      - 不整段贴报错日志,引用最关键的那一两行;完整日志用户需要时再给。
+
+      # 工具使用
+
+      - 读大文件先用 `sed -n '起,止p'` 或 `grep -n` 取相关段落,确认需要全文再整文件读。
     '';
 
     settings = {
-      # 主会话 Opus + Fable advisor:日常轮次按 Opus 计费,Claude 只在
-      # 关键决策点自己决定咨询 Fable(advisor 是实验特性,仅 Anthropic API 直连可用,
-      # 且依赖 feature-flag 拉取——设 DISABLE_TELEMETRY 会让它失效)。
-      # 配对约束:Opus 4.7+ 主模型只接受 Fable 或 Opus 4.7+ 做 advisor。
+      # 主会话直接跑 Fable。写别名而不是 claude-fable-5-1:别名解析到 Claude Code 内置的
+      # 最新 Fable,实测 2.1.258 上就是 claude-fable-5-1,要复验跑:
+      #   claude --model fable -p hi --output-format json | jq '.modelUsage | keys'
+      # 前提:Fable 5.1 需要 Claude Code 2.1.255+,终端和插件两份二进制都得够版本
+      # (见 CLAUDE.md「Claude Code 有两份互不相干的二进制」)。
+      # 不配 advisorModel:advisor 必须不弱于主模型,Fable 5.1 主模型只接受 Fable 5.1
+      # (Opus/Sonnet 一律被拒),等于"另一个 Fable 复核",而每次调用都要完整重读对话
+      # 且不走缓存——官方文档也是这个口径:每轮都需要最强模型就直接换主模型,别挂 advisor。
       # 文档:https://code.claude.com/docs/en/advisor 与 /docs/en/model-config
-      # 注意:部分订阅计划下 Fable 走 usage credits,首次需在会话里 /model fable 同意一次,
-      # 之后 advisor 才会真正生效。
-      model = "opus";
-      advisorModel = "fable";
+      # 注意:部分订阅计划下 Fable 走 usage credits,首次需在会话里 /model fable 同意一次。
+      model = "fable";
       language = "chinese";
       autoAcceptEdits = false;
       showTurnDuration = true;
@@ -307,7 +322,12 @@ in
     Service = {
       WorkingDirectory = ccamRoot;
       ExecStart = "${pkgs.nodejs}/bin/node server/index.js";
-      # git/openssh 供面板的更新检查和 Remote Data Sources 调用
+      # git/openssh 供面板的更新检查和 Remote Data Sources 调用。
+      # claude 和 which 必须在这里显式给出:PATH 是完全覆盖的(systemd user service
+      # 不继承登录 shell 的环境),而面板 Run 页面用 spawnSync("which", ["claude"])
+      # 探测后才 spawn 会话——少任何一个都报 "The `claude` CLI isn't on your PATH"
+      # (缺 which 时 spawnSync 直接 ENOENT,报错和 claude 真的不存在时一模一样)。
+      # 引用 programs.claude-code.package 而不是 ~/.nix-profile/bin,保证和会话用的是同一版本。
       Environment = [
         "NODE_ENV=production"
         "PATH=${
@@ -315,6 +335,8 @@ in
             pkgs.nodejs
             pkgs.git
             pkgs.openssh
+            pkgs.which
+            config.programs.claude-code.package
           ]
         }"
       ];
