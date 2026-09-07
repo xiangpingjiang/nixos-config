@@ -20,4 +20,12 @@ tab name="k8s" {
 
     pane cwd="/home/xpj/.kube"
 }
+    // 跨窗口的活跃 Claude Code 会话面板,1s 检查一次(内容没变不重绘,所以不闪)。
+    // cc-sessions 由 develop/claude-code.nix 提供;这里写 ~/.nix-profile 下的绝对路径是因为
+    // zellij 的 command pane 不经过 shell,PATH 取决于 zellij 服务端是从哪里起的。
+    tab name="cc" {
+        pane command="/home/xpj/.nix-profile/bin/cc-sessions" {
+            args "--watch" "1"
+        }
     }
+}

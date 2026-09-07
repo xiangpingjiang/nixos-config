@@ -149,20 +149,36 @@ in
   imports = [
     ./plasma.nix
     ./rclone.nix
-    ./secrets.nix
-    ./programs.nix
+    ./user-secrets.nix
+    ./apps.nix
+    ./mail.nix
     ./develop/vscode.nix
     ./develop/claude-code.nix
+    ./develop/cc-connect.nix
     ./develop/codex.nix
     ./develop/agent-skills.nix
 
-    ./develop/programs.nix
+    ./develop/shell.nix
   ];
   nix.package = lib.mkDefault pkgs.nix;
   nix.settings.experimental-features = [
     "nix-command"
     "flakes"
   ];
+  # standalone home-manager 的代在 ~/.local/state/nix/profiles/,而系统那边的 nix.gc
+  # 是 root 跑 nix-collect-garbage、只扫 /nix/var/nix/profiles/——看不到这里。
+  # 不配这段,每次 switch 都在 store 里永久钉住一份完整闭包(VS Code 那个 214MB 的
+  # Claude Code 插件、dbx-cli 等全在内),系统 gc 每周跑一次基本回收不到东西
+  # (发现时已积到 39 个 home-manager 代 + 90 个 profile 代)。
+  # 用 nix.gc 而不是 services.home-manager.autoExpire:后者只删 home-manager-*-link,
+  # 管不到 nix profile 每次 switch 留下的 profile-*-link。
+  # 依赖上面的 nix.package——删那行这段就没有 nix 可用了。
+  nix.gc = {
+    automatic = true;
+    # 用 dates 而不是 frequency:后者已被 home-manager 改名,留着只会每次 eval 刷警告
+    dates = "weekly";
+    options = "--delete-older-than 10d";
+  };
 
   home.packages = with pkgs; [
     gitleaks
@@ -172,7 +188,6 @@ in
     android-tools
     kdePackages.krfb
     kdePackages.krdc
-    kdePackages.qrca
 
     devenv
     direnv
@@ -208,7 +223,6 @@ in
 
     basedpyright
     nodejs
-    inputs.serena.packages.${pkgs.stdenv.hostPlatform.system}.serena
     lx-music-desktop
     nixfmt
     nil

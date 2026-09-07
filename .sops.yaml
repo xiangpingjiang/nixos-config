@@ -1,4 +1,13 @@
 creation_rules:
+  # 整文件加密的密钥文件（没有需要留明文的部分）。必须排在下面 mihomo 那条
+  # 通配规则之前：sops 只取第一条匹配的规则，落到通配那条就变成"部分加密"，
+  # 密钥会以明文留在一个名叫 .enc.yaml 的文件里。新增整文件加密的密钥往这里加。
+  - path_regex: secrets/(cc-connect|qq-mail)\.enc\.yaml$
+    age:
+      - age15zxmd8a48rqnl82jlhe96j6fl54kr8j9fvkt74tj0xhc83ddpc8stzk2g0
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICzxijLWHR3Xpf1r/xcmqhCkVUh5F62VbBNLdNuDE7oF xpj@nixos
+
+  # mihomo：部分加密，只有带 # sops:enc 注释的值会被加密
   - path_regex: .*\.enc\.yaml$
     encrypted_comment_regex: 'sops:enc'
     mac_only_encrypted: true

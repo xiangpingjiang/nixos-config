@@ -70,9 +70,9 @@ in
     ./hardware-configuration.nix
     ./systemPackages.nix
     ./services.nix
-    ./programs.nix
+    ./system-programs.nix
     ./networking.nix
-    ./secrets.nix
+    ./system-secrets.nix
   ];
 
   environment.variables = {
@@ -91,6 +91,12 @@ in
   # Bootloader.
   boot.loader.systemd-boot.enable = true;
   boot.loader.efi.canTouchEfiVariables = true;
+
+  # 内存压缩 swap。这台机器 27G 内存长期吃到 20G+、磁盘 swap 用掉 21G/30G,
+  # 大头不是单个巨型进程而是几十个 chromium/code 进程累加,压缩比通常在 3:1 左右。
+  # zram 优先级(默认 5)高于 nvme 上那个 swap 分区(-1),换出先走内存、压不下才落盘。
+  # 它不减少内存需求本身,只是让换页快一个量级。
+  zramSwap.enable = true;
 
   # Use latest kernel.
   boot.kernelPackages = pkgs.linuxPackages_latest; # 取决于 flake.lock 锁定的 nixpkgs 版本 和 https://search.nixos.org/packages?channel=unstable 无关
@@ -184,6 +190,10 @@ in
     dates = "weekly";
     options = "--delete-older-than 10d";
   };
+  # 与 gc 互补:gc 删旧代、optimise 把内容相同的文件收成硬链接压体积。
+  # 注意 standalone home-manager 的代不在 root 的 gc 范围内,那边单独配了
+  # nix.gc(见 home-manager/home.nix),缺了它这里的 gc 基本回收不到东西。
+  nix.optimise.automatic = true;
   nix.settings.experimental-features = [
     "nix-command"
     "flakes"

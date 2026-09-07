@@ -24,6 +24,9 @@ let
     "git.autofetch" = true;
   };
 
+  # 所有 profile 共用的扩展:natqe.reload 提供"重载窗口"命令。
+  baseExtensions = pkgs.nix4vscode.forVscode [ "natqe.reload" ];
+
   # Claude Code 扩展不走 nix4vscode:它的插件数据每天只在 02:10-02:30 UTC 生成一次
   # (见 CLAUDE.md 的更新窗口一节),新版本到得慢——Fable 5.1 需要 2.1.255+,
   # nix4vscode 数据里最高只有 2.1.252 时就卡住了。这里直接按 marketplace 的版本号钉,
@@ -38,14 +41,14 @@ let
   #     -H 'Content-Type: application/json' -H 'Accept: application/json;api-version=3.0-preview.1' \
   #     -d '{"filters":[{"criteria":[{"filterType":7,"value":"anthropic.claude-code"}],"pageSize":1}],"flags":950}' \
   #     | python3 -c "import json,sys; print(json.load(sys.stdin)['results'][0]['extensions'][0]['versions'][0]['version'])"
-  claudeCodeVersion = "2.1.258";
+  claudeCodeVersion = "2.1.263";
   claudeCodeExt = pkgs.vscode-extensions.anthropic.claude-code.overrideAttrs (_: {
     version = claudeCodeVersion;
     src = pkgs.fetchurl {
       # 文件名必须以 .vsix 结尾:vscode-utils 的 unpackVsixSetupHook 靠扩展名触发解包
       name = "anthropic-claude-code.vsix";
       url = "https://anthropic.gallery.vsassets.io/_apis/public/gallery/publisher/anthropic/extension/claude-code/${claudeCodeVersion}/assetbyname/Microsoft.VisualStudio.Services.VSIXPackage?targetPlatform=linux-x64";
-      hash = "sha256-eIJB3cp3HeD5DGcr/mp4kjkY/gMFp9oam8cGKeKSOMc=";
+      hash = "sha256-3DPl35wM8DZInVBpzhBQ+uUJaz7hNkEf0OQ0bI2JLBY=";
     };
   });
 
@@ -67,22 +70,17 @@ in
 
     #有些配置必须在 Default 里
     profiles.default = {
-      userSettings = {
-        "workbench.colorTheme" = "Visual Studio Light";
-        # "window.zoomLevel" = 1.5;
+      userSettings = vscodeBaseSettings // {
         "dev.containers.dockerPath" = "podman";
         "update.mode" = "none";
         "dev.containers.dockerComposePath" = "podman-compose";
-        # 和 vscodeBaseSettings 里那份重复:default 没引用 vscodeBaseSettings,
-        # 而 git.autofetch 是 resource scope,不会从 default 继承到其他 profile。
-        "git.autofetch" = true;
       };
     };
     profiles.nix = {
       extensions =
-        pkgs.nix4vscode.forVscode [
+        baseExtensions
+        ++ pkgs.nix4vscode.forVscode [
           "jnoortheen.nix-ide"
-          "natqe.reload"
           "kdl-org.kdl"
         ]
         ++ [ claudeCodeExt ];
@@ -103,11 +101,11 @@ in
     };
     profiles.python = {
       extensions =
-        pkgs.nix4vscode.forVscode [
+        baseExtensions
+        ++ pkgs.nix4vscode.forVscode [
           "ms-python.debugpy"
           "ms-python.vscode-pylance"
           "ms-python.python"
-          "natqe.reload"
           "mk12.better-git-line-blame"
         ]
         ++ [ claudeCodeExt ];
@@ -115,23 +113,17 @@ in
       userSettings = vscodeBaseSettings // claudeCodeSettings;
     };
     profiles.golang = {
-      extensions = pkgs.nix4vscode.forVscode [
-        "natqe.reload"
-        "golang.go"
-      ];
+      extensions = baseExtensions ++ pkgs.nix4vscode.forVscode [ "golang.go" ];
       userSettings = vscodeBaseSettings;
     };
     profiles.typst = {
-      extensions = pkgs.nix4vscode.forVscode [
-        "natqe.reload"
-        "myriad-dreamin.tinymist"
-      ];
+      extensions = baseExtensions ++ pkgs.nix4vscode.forVscode [ "myriad-dreamin.tinymist" ];
       userSettings = vscodeBaseSettings;
     };
     profiles.markdown = {
       extensions =
-        pkgs.nix4vscode.forVscode [
-          "natqe.reload"
+        baseExtensions
+        ++ pkgs.nix4vscode.forVscode [
           "shd101wyy.markdown-preview-enhanced"
           "foam.foam-vscode"
         ]
@@ -139,51 +131,56 @@ in
       userSettings = vscodeBaseSettings // claudeCodeSettings;
     };
     profiles.jsonnet = {
-      extensions = pkgs.nix4vscode.forVscode [
-        "natqe.reload"
-        "grafana.vscode-jsonnet"
-        "mk12.better-git-line-blame"
-      ];
+      extensions =
+        baseExtensions
+        ++ pkgs.nix4vscode.forVscode [
+          "grafana.vscode-jsonnet"
+          "mk12.better-git-line-blame"
+        ];
       userSettings = vscodeBaseSettings;
     };
     profiles.java = {
-      extensions = pkgs.nix4vscode.forVscode [
-        "natqe.reload"
-        "vscjava.vscode-java-pack"
-        "redhat.java"
-        "vscjava.vscode-java-debug"
-        "vscjava.vscode-java-test"
-        "vscjava.vscode-maven"
-        "vscjava.vscode-java-dependency"
-        "mk12.better-git-line-blame"
-      ];
+      extensions =
+        baseExtensions
+        ++ pkgs.nix4vscode.forVscode [
+          "vscjava.vscode-java-pack"
+          "redhat.java"
+          "vscjava.vscode-java-debug"
+          "vscjava.vscode-java-test"
+          "vscjava.vscode-maven"
+          "vscjava.vscode-java-dependency"
+          "mk12.better-git-line-blame"
+        ];
       userSettings = vscodeBaseSettings;
     };
     profiles.ssh = {
-      extensions = pkgs.nix4vscode.forVscode [
-        "ms-vscode-remote.remote-ssh"
-        "ms-vscode.remote-explorer"
-        "natqe.reload"
-      ];
+      extensions =
+        baseExtensions
+        ++ pkgs.nix4vscode.forVscode [
+          "ms-vscode-remote.remote-ssh"
+          "ms-vscode.remote-explorer"
+        ];
 
       userSettings = vscodeBaseSettings;
     };
     profiles.dev_container = {
-      extensions = pkgs.nix4vscode.forVscode [
-        "ms-vscode-remote.remote-containers"
-        "ms-kubernetes-tools.vscode-kubernetes-tools"
-        "redhat.vscode-yaml"
-        "natqe.reload"
-      ];
+      extensions =
+        baseExtensions
+        ++ pkgs.nix4vscode.forVscode [
+          "ms-vscode-remote.remote-containers"
+          "ms-kubernetes-tools.vscode-kubernetes-tools"
+          "redhat.vscode-yaml"
+        ];
       userSettings = vscodeBaseSettings;
     };
     profiles.sql = {
-      extensions = pkgs.nix4vscode.forVscode [
-        "mtxr.sqltools"
-        "mtxr.sqltools-driver-mysql"
-        "ultram4rine.sqltools-clickhouse-driver"
-        "natqe.reload"
-      ];
+      extensions =
+        baseExtensions
+        ++ pkgs.nix4vscode.forVscode [
+          "mtxr.sqltools"
+          "mtxr.sqltools-driver-mysql"
+          "ultram4rine.sqltools-clickhouse-driver"
+        ];
       userSettings = vscodeBaseSettings;
     };
   };

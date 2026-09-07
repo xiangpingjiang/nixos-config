@@ -14,20 +14,8 @@
 
   ];
 
-  environment.plasma6.excludePackages = with pkgs.kdePackages; [
-    qrca
-  ];
-
   #for sudo podman
   virtualisation.podman = {
     enable = true;
   };
-  virtualisation.containers.policy = {
-    default = [
-      {
-        type = "insecureAcceptAnything";
-      }
-    ];
-  };
-
 }

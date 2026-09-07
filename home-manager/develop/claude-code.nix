@@ -2,7 +2,6 @@
   inputs,
   pkgs,
   lib,
-  config,
   ...
 }:
 
@@ -99,43 +98,72 @@ let
     printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"kubectl 对 config_sg 集群的非读取操作: %s"}}\n' "$bad"
   '';
 
-  # Claude Code Agent Monitor(CCAM):本地实时监控面板,hooks 把每个事件 POST 到
-  # 127.0.0.1:4820 的 Express+SQLite 服务,浏览器端走 WebSocket 实时刷新。
-  # 上游装 hooks 的两个入口在这台机器上都失效——`npm run install-hooks` 和 server
-  # 启动时的自动安装都是 writeFileSync(~/.claude/settings.json),而这个文件是
-  # home-manager 生成的 /nix/store 只读符号链接(server 那次包在 try/catch 里静默
-  # 失败,不影响服务本身)。所以 hooks 只能像下面这样声明式写进来。
-  #
-  # 源码有意放可变目录而不是 fetchFromGitHub 钉进 store:上游几天一个版本,钉 store
-  # 每次升级都要重算根和 client 两份 npmDepsHash。代价是升级不走 home-manager switch:
-  #   cd ~/.local/share/ccam && git pull && npm install && npm run build
-  #   systemctl --user restart ccam-dashboard
-  ccamRoot = "${config.home.homeDirectory}/.local/share/ccam";
-
-  # hook 侧的依赖闭包(hook-handler → hook-transport → server/lib/{server-info,claude-home})
-  # 只用 node 内置模块,完全不碰 node_modules,所以这里只需要 nodejs + 源码文件。
-  # 行为是 fire-and-forget:请求超时 2s、进程 2.5s 硬退出、不往 stdout 写任何东西,
-  # 面板没启动时立刻 ECONNREFUSED 返回。既不会拖慢会话,也不会干扰权限决策
-  # (hook 的 stdout JSON 才有决策语义,它不输出就不参与)。
-  # 代价:PreToolUse/PostToolUse 是 matcher "*",每次工具调用多两次 node 进程启动。
-  ccamHook = event: {
-    type = "command";
-    command = ''${pkgs.nodejs}/bin/node "${ccamRoot}/scripts/hook-handler.js" ${event}'';
+  # 终端 CLI 的版本。llm-agents 上游打包新版本有一两天的滞后,想立刻用新版就在这里钉,
+  # 和 vscode.nix 里插件那份版本号是两回事(两个入口是两份互不相干的二进制,见 CLAUDE.md)。
+  # 写成"上游追上就自动让路":一旦 llm-agents 的版本 >= 这里的值就直接用上游的包,
+  # 例行 nix flake update 之后无需手工撤销这段 override。
+  # override 本身很便宜:上游那个 drv 只是 install -Dm755 $src,没有编译,
+  # 缓存未命中的代价仅仅是重新下载一次二进制,别为此把它改回去。
+  # 升级手续:改 claudeCodeVersion,再跑这行拿新 hash:
+  #   nix store prefetch-file --json --name claude \
+  #     "https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases/<version>/linux-x64/claude"
+  # 查上游当前最新版本:curl -s "https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases/latest"
+  claudeCodeVersion = "2.1.263";
+  claudeCodeUpstream = inputs.llm-agents.packages.${pkgs.stdenv.hostPlatform.system}.claude-code;
+  claudeCodePkg =
+    if lib.versionAtLeast claudeCodeUpstream.version claudeCodeVersion then
+      claudeCodeUpstream
+    else
+      # src 整个换掉而不是只改 version:上游若用 version 拼 URL,只改版本号会拿旧 hash 去校验新文件。
+      # 上游 drv 带 versionCheckHook,二进制自报版本对不上会直接构建失败,不用另外验证。
+      claudeCodeUpstream.overrideAttrs (_: {
+        version = claudeCodeVersion;
+        src = pkgs.fetchurl {
+          url = "https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases/${claudeCodeVersion}/linux-x64/claude";
+          hash = "sha256-JtAgNR6BEvQAZ5Dzz85DtMnfDBux0OVCNk1kFRuB1bo=";
+        };
+      });
+  # 跨窗口列出活跃的 Claude Code 会话(zellij 的 cc tab 循环跑的就是它,见 zellij/dev.kdl)。
+  # 用 writeShellApplication 而不是 writeShellScriptBin:前者过 shellcheck,并且能用
+  # runtimeInputs 固定 PATH —— 进程枚举和 transcript 解析都在 claude-sessions.py 里,
+  # 所以只需要 python3(标准库,无第三方依赖)和 coreutils;zellij 的 command pane
+  # 不经过 shell,PATH 取决于 zellij 服务端从哪里起的,不能指望调用者的环境。
+  # bashOptions 显式去掉默认的 errexit:新开的会话命令行里没有 --resume,
+  # `sid=$(... | grep -oP ...)` 无匹配返回 1 是正常路径,-e 下会当场终止整个脚本。
+  ccSessions = pkgs.writeShellApplication {
+    name = "cc-sessions";
+    runtimeInputs = with pkgs; [
+      python3
+      coreutils
+    ];
+    bashOptions = [
+      "nounset"
+      "pipefail"
+    ];
+    # 渲染器路径由 Nix 注入:shell 那份用 readFile 进来的,自己没法插值 store 路径
+    text = ''
+      RENDER_PY=${./claude-sessions.py}
+    ''
+    + builtins.readFile ./claude-sessions.sh;
   };
 in
 {
+  home.packages = [ ccSessions ];
+
   programs.claude-code = {
     enable = true;
-    package = inputs.llm-agents.packages.${pkgs.stdenv.hostPlatform.system}.claude-code;
+    package = claudeCodePkg;
 
     # skill 不在这里声明:统一交给 agent-skills-nix 管理(见 ./agent-skills.nix)
 
     # 多模型分工(写入全局 ~/.claude/CLAUDE.md):
     # Claude Code 没有内置的"按难度自动换模型"路由(model-config 文档确认),
-    # 所以只剩一条路:主会话跑 Fable,再由主模型用 Agent 工具把机械/常规工作分流给
-    # 更便宜的 haiku/sonnet(Agent 的 model 参数;/model 只有用户能手动执行)。
-    # 2026-09-02 之前是"Opus 主会话 + Fable advisor",现在 Fable 直接当主模型、
-    # advisor 一并删掉(理由见 settings 里的注释)。
+    # 这里组合两个机制:主会话跑 Opus + Fable 做 advisor(见 settings.advisorModel),
+    # 再由主模型用 Agent 工具按难度分流:机械/常规工作给更便宜的 haiku/sonnet,
+    # 能一次性描述清楚的整块高难度任务给 fable 子代理(Agent 的 model 参数;
+    # /model 只有用户能手动执行)。
+    # 2026-09-02 曾切成"Fable 主会话、不配 advisor",当天又切回来:Fable 主模型
+    # 只接受 Fable 做 advisor,等于每一轮都跑最贵的模型还分不了层,与省钱目标相悖。
     # 改本文件前先查官方文档:https://code.claude.com/docs/(页面索引在 /docs/llms.txt)
     #
     # 后两节(回答风格 / 工具使用)是评估 caveman、context-mode 两个 token 优化项目后的留存物。
@@ -146,26 +174,32 @@ in
     context = ''
       # 模型分工策略(节省 token 费用)
 
-      主会话运行在 Fable,没有配 advisor:advisor 要求它不弱于主模型,主会话已经是 Fable
-      时它只能是"另一个 Fable 复核",每次还要完整重读对话且不走缓存,不划算。
-      所以省钱全靠往下委派:
+      主会话运行在 Opus,并配置了 Fable 作为 advisor。分工原则:
 
+      - **advisor(Fable)** —— 关键决策点主动咨询:确定技术方案前、
+        同一错误反复出现时、宣布任务完成前、安全/密钥相关改动前。
+        它能看到完整对话;注意每次咨询都会完整重读对话且不走缓存,别滥用。
       - **haiku(Agent 工具委派,显式传 model 参数)** —— 机械性工作:
         代码/文件搜索(配 Explore agent)、批量小改动、跑命令并汇总输出、
         格式转换、按明确清单执行的操作。
       - **sonnet(Agent 工具委派,显式传 model 参数)** —— 常规子任务:
         普通编码修改、写测试、常见 bug 修复、资料调研与总结。
-      - **主会话自己做(fable)** —— 需要较强推理或完整上下文的工作:
-        方案设计、疑难 debug、跨文件改动的把关与收尾。
+      - **fable(Agent 工具委派,显式传 model 参数)** —— 整块的高难度任务:
+        大型重构、跨文件迁移、疑难 debug、深度调研。这是唯一不需要用户手动
+        /model 就能让 Fable 真正干活的路径,由主模型自己判断是否启用。
+      - **主会话自己做(opus)** —— 需要较强推理或完整上下文的工作:
+        方案设计、复杂 debug、跨文件改动的把关与收尾。
 
       规则:
-      - 主会话每一轮都按 Fable 计费,是全场最贵的一档,能下放的就下放:
-        搜索、批量改动、跑命令看输出这类活儿默认交给 haiku/sonnet,不要自己埋头做。
+      - 主会话每一轮都按 Opus 计费,能下放的就下放:搜索、批量改动、跑命令看输出
+        这类活儿默认交给 haiku/sonnet,不要自己埋头做。
       - 委派时把上下文和验收标准写全,避免便宜模型来回试错反而更费 token。
       - 子代理跑在隔离上下文里:看不到当前对话,只拿得到 prompt 里写的东西,中途也无法
         追加信息,所以只在任务能一次性描述清楚时委派;打不包的就自己做。
       - 一两步就能完成的事不必委派,直接做(委派本身也有开销)。
       - 便宜模型返回的结果要过目,不放心的部分自己复核,不要盲信。
+      - 遇到整块的高难度任务,先判断能否一次性描述清楚:能就委派给 fable 子代理;
+        打不包(需要边做边对齐、依赖当前对话上下文)就自己做并在决策点咨询 advisor。
 
       # 回答风格
 
@@ -179,17 +213,20 @@ in
     '';
 
     settings = {
-      # 主会话直接跑 Fable。写别名而不是 claude-fable-5-1:别名解析到 Claude Code 内置的
-      # 最新 Fable,实测 2.1.258 上就是 claude-fable-5-1,要复验跑:
-      #   claude --model fable -p hi --output-format json | jq '.modelUsage | keys'
-      # 前提:Fable 5.1 需要 Claude Code 2.1.255+,终端和插件两份二进制都得够版本
-      # (见 CLAUDE.md「Claude Code 有两份互不相干的二进制」)。
-      # 不配 advisorModel:advisor 必须不弱于主模型,Fable 5.1 主模型只接受 Fable 5.1
-      # (Opus/Sonnet 一律被拒),等于"另一个 Fable 复核",而每次调用都要完整重读对话
-      # 且不走缓存——官方文档也是这个口径:每轮都需要最强模型就直接换主模型,别挂 advisor。
+      # 主会话 Opus + Fable advisor:日常轮次按 Opus 计费,Claude 只在关键决策点
+      # 自己决定咨询 Fable。触发时机完全由模型判断,没有任何设置项能强制、限频或按
+      # 规则触发,只能靠上面 context 里的指令引导;临时需要时在对话里说"先咨询 advisor"。
+      # advisor 是实验特性,仅 Anthropic API 直连可用,且依赖 feature-flag 拉取——
+      # 设 DISABLE_TELEMETRY 会让它失效。
+      # 配对约束:advisor 必须不弱于主模型。Opus 4.7+ 主模型接受 Fable 或 Opus 4.7+;
+      # 反过来 Fable 主模型只接受 Fable,所以"Fable 主 + 更弱 advisor 分层"这条路不存在。
+      # 别名 fable 解析到 Claude Code 内置的最新 Fable(2.1.255+ 上是 claude-fable-5-1),
+      # 终端和插件两份二进制都得 ≥2.1.255(见 CLAUDE.md「Claude Code 有两份互不相干的二进制」)。
       # 文档:https://code.claude.com/docs/en/advisor 与 /docs/en/model-config
-      # 注意:部分订阅计划下 Fable 走 usage credits,首次需在会话里 /model fable 同意一次。
-      model = "fable";
+      # 注意:部分订阅计划下 Fable 走 usage credits,首次需在会话里 /model fable 同意一次,
+      # 之后 advisor 才会真正生效(本机已同意过)。
+      model = "opus";
+      advisorModel = "fable";
       language = "chinese";
       autoAcceptEdits = false;
       showTurnDuration = true;
@@ -223,8 +260,7 @@ in
       };
 
       # KDE 桌面通知:通过 notify-send 走 D-Bus,Plasma 原生弹窗,终端和 VS Code 插件面板都生效
-      # 同一事件下是数组,CCAM 的上报条目和这里原有的通知/守卫条目并存互不影响
-      # (CCAM 的 matcher "*" 与 kubectl 守卫的 matcher "Bash" 也可以共存)。
+      # 同一事件下是数组,可以给一个事件挂多个互不影响的条目。
       hooks = {
         # config_sg 集群的 kubectl 非读取操作强制询问(见上方 kubectlGuard 注释)
         PreToolUse = [
@@ -237,30 +273,7 @@ in
               }
             ];
           }
-          {
-            matcher = "*";
-            hooks = [ (ccamHook "PreToolUse") ];
-          }
         ];
-        # 以下几个事件只用于 CCAM 上报
-        PostToolUse = [
-          {
-            matcher = "*";
-            hooks = [ (ccamHook "PostToolUse") ];
-          }
-        ];
-        SubagentStop = [
-          {
-            matcher = "*";
-            hooks = [ (ccamHook "SubagentStop") ];
-          }
-        ];
-        # SessionStart / SessionEnd / UserPromptSubmit 不接受 tool-name matcher。
-        # UserPromptSubmit 是纯文本轮次里唯一可靠的"用户已恢复"信号——不调工具时
-        # 不会有 PreToolUse,缺了它面板的 Waiting 状态会一直挂着。
-        SessionStart = [ { hooks = [ (ccamHook "SessionStart") ]; } ];
-        SessionEnd = [ { hooks = [ (ccamHook "SessionEnd") ]; } ];
-        UserPromptSubmit = [ { hooks = [ (ccamHook "UserPromptSubmit") ]; } ];
         # Claude 需要你介入时(权限确认、空闲等待输入等)
         Notification = [
           {
@@ -270,10 +283,6 @@ in
                 command = ''${detectApp}; in=$(cat); msg=$(printf '%s' "$in" | ${pkgs.jq}/bin/jq -r '.message // "Claude Code needs your attention"'); case "$msg" in *"waiting for your input"*) exit 0 ;; esac; dir=$(printf '%s' "$in" | ${pkgs.jq}/bin/jq -r '.cwd // ""'); ${notifyClick} dialog-information "Claude Code ($app)" "$msg" "$dir"'';
               }
             ];
-          }
-          {
-            matcher = "*";
-            hooks = [ (ccamHook "Notification") ];
           }
         ];
         # 权限确认对话框出现时(VS Code 插件走 --permission-prompt-tool,不触发 Notification hook,只能靠这个事件)
@@ -298,51 +307,8 @@ in
               }
             ];
           }
-          {
-            matcher = "*";
-            hooks = [ (ccamHook "Stop") ];
-          }
         ];
       };
     };
-  };
-
-  # CCAM 面板服务:单进程在 4820 端口同时提供 API/WebSocket 和构建好的前端(client/dist),
-  # 打开 http://localhost:4820 即可,不用一直挂着终端。
-  # SQLite 后端走 Node 24 内置的 node:sqlite:better-sqlite3 只是 optionalDependency,
-  # 而新版 npm 默认不执行依赖的 install script,它的 native 二进制没编译,正好用不上,
-  # 也就绕开了 NixOS 上 prebuild-install 二进制跑不起来的老问题。
-  # ConditionPathExists:源码目录不在(还没 clone / 挪走了)就跳过启动而不是反复失败。
-  systemd.user.services.ccam-dashboard = {
-    Unit = {
-      Description = "Claude Code Agent Monitor dashboard";
-      After = [ "network.target" ];
-      ConditionPathExists = "${ccamRoot}/server/index.js";
-    };
-    Service = {
-      WorkingDirectory = ccamRoot;
-      ExecStart = "${pkgs.nodejs}/bin/node server/index.js";
-      # git/openssh 供面板的更新检查和 Remote Data Sources 调用。
-      # claude 和 which 必须在这里显式给出:PATH 是完全覆盖的(systemd user service
-      # 不继承登录 shell 的环境),而面板 Run 页面用 spawnSync("which", ["claude"])
-      # 探测后才 spawn 会话——少任何一个都报 "The `claude` CLI isn't on your PATH"
-      # (缺 which 时 spawnSync 直接 ENOENT,报错和 claude 真的不存在时一模一样)。
-      # 引用 programs.claude-code.package 而不是 ~/.nix-profile/bin,保证和会话用的是同一版本。
-      Environment = [
-        "NODE_ENV=production"
-        "PATH=${
-          lib.makeBinPath [
-            pkgs.nodejs
-            pkgs.git
-            pkgs.openssh
-            pkgs.which
-            config.programs.claude-code.package
-          ]
-        }"
-      ];
-      Restart = "on-failure";
-      RestartSec = 5;
-    };
-    Install.WantedBy = [ "default.target" ];
   };
 }

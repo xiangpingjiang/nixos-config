@@ -35,11 +35,6 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    serena = {
-      url = "github:oraios/serena";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
     # Agent Skills 的声明式管理(见 home-manager/develop/agent-skills.nix)。
     # 纯 Nix 库 + shell 脚本,没有编译产物,follows nixpkgs 不存在缓存未命中的代价。
     agent-skills = {
@@ -75,8 +70,6 @@
       nixpkgs,
       home-manager,
       agenix,
-      nix4vscode,
-      serena,
       ...
     }@inputs:
     let
@@ -84,6 +77,10 @@
       pkgs = nixpkgs.legacyPackages.${system};
     in
     {
+      # `nix fmt` 的实现。CLAUDE.md 里格式化用的就是 nixfmt,挂上之后
+      # 直接 `nix fmt` 就能格式化整个仓库,不必逐个文件敲 nixfmt <file>。
+      formatter.${system} = pkgs.nixfmt;
+
       # System configurations
       nixosConfigurations = {
         nixos = nixpkgs.lib.nixosSystem {
@@ -108,6 +105,7 @@
           inputs.agenix.homeManagerModules.default
           inputs.plasma-manager.homeModules.plasma-manager
           inputs.agent-skills.homeManagerModules.default
+          inputs.sops-nix.homeManagerModules.sops
         ];
         extraSpecialArgs = { inherit inputs; };
       };

@@ -14,16 +14,17 @@ home-manager update (home-manager/ only):
 
 If both changed, run both.
 
-## Claude Code Agent Monitor (CCAM)
+## Active Claude Code sessions (cc-sessions)
 
-Local dashboard at <http://localhost:4820>, kept running by the
-`ccam-dashboard` user service. Its hooks are declared in
-`home-manager/develop/claude-code.nix`, but the source tree lives outside the
-store at `~/.local/share/ccam`, so upgrades do NOT go through
-`home-manager switch`:
+`cc-sessions` lists every live Claude Code session on this machine, grouped by
+VS Code window, with each session's title and state. `cc-sessions --watch` is
+what the zellij `cc` tab runs; new zellij sessions get that tab automatically
+(`home-manager/develop/zellij/dev.kdl`).
 
-    cd ~/.local/share/ccam && git pull && npm install && npm run build
-    systemctl --user restart ccam-dashboard
+Liveness comes from processes, not from any bookkeeping: a session in the VS Code
+extension is a direct child of that window's extension host. Titles and state are
+read from the session transcripts under `~/.claude/projects/`. See CLAUDE.md for
+how processes are matched to transcripts.
 
 Hook changes only take effect in newly started Claude Code sessions.
 
