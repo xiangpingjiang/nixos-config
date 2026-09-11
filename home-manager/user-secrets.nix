@@ -30,4 +30,11 @@
     sopsFile = ../secrets/qq-mail.enc.yaml;
     key = "qq_mail_authcode";
   };
+
+  # 国内模型兜底通道的 API key,给 claude-ds 这类 wrapper 用,见 develop/claude-code.nix。
+  # 同样是 eval 期进 store,改完 `sops secrets/llm-keys.enc.yaml` 后要重新 switch。
+  sops.secrets.deepseek_api_key = {
+    sopsFile = ../secrets/llm-keys.enc.yaml;
+    key = "deepseek_api_key";
+  };
 }

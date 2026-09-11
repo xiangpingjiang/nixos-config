@@ -41,14 +41,14 @@ let
   #     -H 'Content-Type: application/json' -H 'Accept: application/json;api-version=3.0-preview.1' \
   #     -d '{"filters":[{"criteria":[{"filterType":7,"value":"anthropic.claude-code"}],"pageSize":1}],"flags":950}' \
   #     | python3 -c "import json,sys; print(json.load(sys.stdin)['results'][0]['extensions'][0]['versions'][0]['version'])"
-  claudeCodeVersion = "2.1.263";
+  claudeCodeVersion = "2.1.268";
   claudeCodeExt = pkgs.vscode-extensions.anthropic.claude-code.overrideAttrs (_: {
     version = claudeCodeVersion;
     src = pkgs.fetchurl {
       # 文件名必须以 .vsix 结尾:vscode-utils 的 unpackVsixSetupHook 靠扩展名触发解包
       name = "anthropic-claude-code.vsix";
       url = "https://anthropic.gallery.vsassets.io/_apis/public/gallery/publisher/anthropic/extension/claude-code/${claudeCodeVersion}/assetbyname/Microsoft.VisualStudio.Services.VSIXPackage?targetPlatform=linux-x64";
-      hash = "sha256-3DPl35wM8DZInVBpzhBQ+uUJaz7hNkEf0OQ0bI2JLBY=";
+      hash = "sha256-f34zyvfUc5EyDaq6Nz+qVMk8DdiHZHVrGzVH1y8LfnM=";
     };
   });
 

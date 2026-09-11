@@ -97,6 +97,98 @@ CLI 那份是"上游追上就自动让路"的写法(`lib.versionAtLeast` 比一�
 
 判断当前跑的是哪个:`readlink /proc/<pid>/exe`。
 
+#### 说「升级 Claude Code 到最新」时照这个做
+
+版本号不要问用户,也不要凭记忆填,两条命令各查各的(实测 2026-09-12 两边都返回 `2.1.268`):
+
+```bash
+# CLI(官方 GCS 分发,llm-agents 打包的上游就是它)
+curl -s "https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases/latest"
+# VS Code 插件(marketplace,和 CLI 的版本号通常同步但不保证)
+curl -s -X POST 'https://marketplace.visualstudio.com/_apis/public/gallery/extensionquery' \
+  -H 'Content-Type: application/json' -H 'Accept: application/json;api-version=3.0-preview.1' \
+  -d '{"filters":[{"criteria":[{"filterType":7,"value":"anthropic.claude-code"}],"pageSize":1}],"flags":950}' \
+  | python3 -c "import json,sys; print(json.load(sys.stdin)['results'][0]['extensions'][0]['versions'][0]['version'])"
+```
+
+拿到版本号之后:改两个 `claudeCodeVersion`,各跑一次 `nix store prefetch-file`(命令写在两个文件的注释里)
+换 hash,然后 `home-manager switch --flake . -b backup -v`(这两处都在 home-manager 侧,不用 nixos-rebuild)。
+两个查询返回的版本不一致就各钉各的,不要为了对齐把某一边往回压。
+
+想知道这版改了什么(用户问起、或升级后行为有变时再查,不是每次都要):
+
+- <https://code.claude.com/docs/en/changelog>
+- <https://github.com/anthropics/claude-code/releases>
+
+插件那份**必须手动钉**(已脱离 nix4vscode,见下一节)。CLI 那份严格说可以只 `nix flake update llm-agents`
+等上游追上,但"升级到最新"通常意味着现在就要用上,所以默认直接钉版本号 —— `lib.versionAtLeast`
+会在 llm-agents 追上之后自动让路,钉了不用记着撤。
+
+### 官方 API 连不上时的兜底入口(claude-ds,claude-code.nix)
+
+`claude-ds` 把 Claude Code 接到 DeepSeek 的 Anthropic 兼容端点
+(`https://api.deepseek.com/anthropic`),官方 API 不通时用它,平时照常用 `claude`。
+**端点在进程启动那一刻定死**:开着的会话切不过去,`/model` 也只能在当前端点的别名里选,
+要换就重开一个会话。降级顺序(先查 mihomo 的 claude 选择器、再查节点存活,最后才动模型)
+写在 README 的 “Falling back to a Chinese model” 一节。
+选 DeepSeek 而不是 claude-code-router 这类协议转换层:DeepSeek、智谱、Moonshot 都直接
+提供原生 Anthropic 端点,router 只在 provider 没有原生端点、或要按难度在多家之间路由时
+才值得引入 —— 多一跳还多一处 tool_use 保真风险。加别的 provider 就再调一次
+`mkFallbackClaude`(一个 attrset 的事)。
+
+**切换必须走 `claude --settings`,不能靠 export。** settings 文件的 `env` 块会**替换**
+从 shell 继承的同名变量(文档原文,实测也是),所以 `ANTHROPIC_BASE_URL=... claude` 在本机
+会被 `~/.claude/settings.json` 压掉。`--settings` 这一层优先级仅次于 managed settings、
+高于用户级,而且是叠加不是替换 —— hooks、permissions、全局 CLAUDE.md 全部照常生效,
+只有 JSON 里列出的键被换掉。为此把 settings.env 里那行
+`ANTHROPIC_BASE_URL = "https://api.anthropic.com"` 删了:它填的是默认值,留着唯一的效果
+就是堵死手动 export 这条救急路径。
+
+**密钥走 shell,不进 JSON。** store 全局可读,所以 wrapper 里 `export ANTHROPIC_AUTH_TOKEN`
+(值来自 sops 的 `secrets/llm-keys.enc.yaml`),而那份 settings **不写这个键**——
+只有没被列出的变量才轮得到 shell 的值。顺带一个安全性质:`ANTHROPIC_AUTH_TOKEN` 一旦设了
+就压过已登录的 OAuth(实测请求头是 `Bearer <你的 key>`),不会把公司账号的 token 发给第三方。
+反过来说,**拿第三方端点做实验时务必先确认这一点**,否则一次 `-p hi` 就把 OAuth token
+写进了对方的日志。
+
+**四个模型别名都要映射,包括 DeepSeek 官方没写的 `FABLE`。** 全局 CLAUDE.md 让主模型按
+haiku/sonnet/fable 委派子代理,漏掉 fable 那条路会当场撞未知模型。要清楚兜底状态下这套
+分工只剩形式:四个别名指向同一个模型,委派省不下钱,唯一还成立的作用是隔离上下文。
+
+**`[1m]` 只在本地解析。** 模型名不在 Claude Code 的 catalog 里时它按 200k 假设窗口、据此
+提前 auto-compact;后缀 `[1m]` 声明真实窗口,实测**发出去的 `model` 字段已经把后缀剥掉**,
+不会污染 provider 那边的模型名。`CLAUDE_CODE_AUTO_COMPACT_WINDOW=786432` 再把 compact
+阈值抬到窗口的 3/4(这三项都抄自 DeepSeek 官方集成文档)。
+
+**第三方端点下会静默少掉一批功能**,别当成 bug:Remote Control 和 server-managed settings
+由 Claude Code 自己关掉(只要 `ANTHROPIC_BASE_URL` 不是 `api.anthropic.com`);Advisor
+要求网关原样转发到 Anthropic API,DeepSeek 上会打一行 `no advisor rank` 然后自动禁用
+(不用去改 `advisorModel`);MCP 的 tool search 默认关(`ENABLE_TOOL_SEARCH=true` 能开回来);
+claude.ai connectors、Artifacts、`/schedule`、Channels、web/mobile/Slack 那些一律不可用。
+hooks、skills、subagents、checkpoints 这些纯本地的东西不受影响。
+
+DeepSeek 那边的兼容边界(官方兼容表):`cache_control` **全部忽略**——它有自己的自动前缀
+缓存(命中价 ¥0.02-0.04/M,低一到两个数量级),所以不是没缓存,是断点你管不了;
+`thinking` 支持但 `budget_tokens` 忽略;`document`(PDF 输入)和 `redacted_thinking` 不支持;
+`anthropic-version` 忽略;未知模型名一律被服务端映射到 `deepseek-flash`,所以配错不会 400。
+
+改 key:`sops secrets/llm-keys.enc.yaml` 之后**重新 switch**(`.enc.yaml` 是 eval 期复制进
+store 的)。还是占位值 `REPLACE_ME` 时 wrapper 直接退出并打印引导,不会带着空 token 去撞 401。
+
+**VS Code 插件那个入口 `--settings` 管不到**(它自己起进程,只认 `claudeCode.environmentVariables`
+和 `~/.claude/settings.json`)。想让插件也走兜底,只能改用户级 settings 的 `env`+`apiKeyHelper`,
+那是个全局开关、翻过去官方路径就关了 —— 目前没做。
+
+验证整条链路(不需要真 key,也不会把 OAuth token 发出去):起一个打印请求头的本地 HTTP
+server,把 wrapper 那份 settings 的 base URL 换成它,看请求里的 `authorization` 是不是
+shell 给的值、`model` 有没有被映射成 provider 的名字:
+
+```bash
+sf=$(grep -o '/nix/store/[^ ]*claude-ds-settings.json' ~/.nix-profile/bin/claude-ds | head -1)
+python3 -c "import json;d=json.load(open('$sf'));d['env']['ANTHROPIC_BASE_URL']='http://127.0.0.1:8089';print(json.dumps(d))" > /tmp/probe.json
+ANTHROPIC_AUTH_TOKEN=fake claude --settings /tmp/probe.json -p hi
+```
+
 ### nix4vscode 的更新窗口(版本不对先加 --refresh)
 
 插件版本不是查询时实时抓的,是 nix4vscode 仓库里预生成的 `data/vscode/data_*.json`。
@@ -169,7 +261,10 @@ agenix 没有;`sops <file>` 在仓库任何位置都能跑,而 `agenix -e` 必�
 由单独的 `restic-prune` systemd timer 每周两次执行,仓库列表自动从
 `services.restic.backups` 派生——增删备份仓库时无需同步改 prune 脚本。
 
-#### 三条互相独立的教训(都是真出过事的)
+#### 五条互相独立的教训(都是真出过事的)
+
+排查过程横跨 2026-07-25 到 09-07,每一条都是前一条修好之后才暴露出来的,
+所以下面的顺序就是它们被发现的顺序。改这段脚本前先看完,坑都在这儿。
 
 **1. prune 跟着高频备份跑会死锁。** 最早的形态,已由上面的剥离解决。
 
@@ -178,29 +273,62 @@ agenix 没有;`sops <file>` 在仓库任何位置都能跑,而 `agenix -e` 必�
 09-03 共 9 次 prune 全部卡在 `repository is already locked`,每次白等 30 分钟。
 备份任务毫发无损——它们用的是非独占锁,所以表面一切正常;而旧脚本的
 `|| echo "!! prune 失败"` 让单元恒定 exit 0、永远显示 Finished,`systemctl --failed`
-里永远看不到它。两者叠加,一个月零清理却无人察觉。现在的修复是循环里 prune 前先
+里永远看不到它。两者叠加,一个月零清理却无人察觉。修复是循环里 prune 前先
 `restic unlock`(只删同主机 PID 已死、或 >30min 未刷新的锁,不碰并发备份的活锁),
 末尾 `exit $rc` 让单元真的变红。**`--retry-lock` 只是等,永远不会清陈旧锁**。
 
 **3. 瓶颈是网盘后端,不是 restic,也不是数据量。** 2026-09-06 还这两个月的欠账:
-13 小时 2 分,CPU 只烧了 89 秒——99.8% 在等 WebDAV。删掉 10668 个快照
-(cst 5094 / infini 4847 / nutstore 727),清完后每个仓库只剩 30-50 KiB 有效数据,
-其余全是元数据(每次备份都写一个 snapshot + 一个 index + 若干 tree blob)。
-同样四千多个快照,三家的表现天差地别:
-
-| 远端 | 结果 |
-| --- | --- |
-| infini | 10 分钟全程跑完,重建索引,干净收尾 |
-| cst | 11.5 小时,repack 到 22/24 时 `unexpected EOF` 触发熔断退出;全程 429/500 不断 |
-| nutstore | 删快照时 7 个撞 500,forget 判定失败,没进到 prune 阶段 |
+13 小时 2 分,CPU 只烧了 89 秒——99.8% 在等 WebDAV。删掉 10668 个快照,清完后每个
+仓库只剩 50 KiB 左右有效数据,其余全是元数据(每次备份都写一个 snapshot + 一个 index
++ 若干 tree blob)。同样四千多个快照,infini 10 分钟跑完,cst 花了 11.5 小时还失败。
 
 **看到 `does not exist` 不要以为仓库坏了**:那是限流下的假 404,同一个对象换个时刻
 就能读到(日志里能看到 `operation successful after 4 retries`)。**也不要因此重建仓库**。
-prune 失败同样不必惊慌:forget 删掉的快照是落盘的,下次跑从十几个快照起步,只补做
-没做完的 pack 清理,不会从头再来。restic 的设计是宁可 Fatal 也不带着残缺索引删数据。
+prune 失败同样不必惊慌:forget 删掉的快照是落盘的,下次跑从十几个快照起步,不会从头再来。
+restic 的设计是宁可 Fatal 也不带着残缺索引删数据。
 
-为避免重演,备份周期从 10 分钟放宽到 30 分钟(每天 432 次往返 → 144 次),并加上
-`--skip-if-unchanged`——内容和父快照一致就不生成新快照。**这一项要验证**:日志里每次都报
+**4. 不要用 `forget --prune`,拆成两条命令。** restic 只在这一次 forget 真的删掉了
+快照时才接着跑 prune。快照被上一轮删干净后(remove 0),prune 阶段被整个跳过、命令
+还返回 0——2026-09-07 就这么假成功过一次:待删的 4098 个 blob 原封不动、远端 2051 个
+pack 一个没少,脚本却判定成功。拆开之后 prune 每次都真的执行。
+顺带把 forget 失败改成不阻断 prune:某个仓库删快照失败时,pack 该清还是能清。
+
+**5. 有读不回的 pack 时,靠 `--max-repack-size 0` 降级,`repair index` 治不了。**
+kp_cst 上有两个 pack,索引里记着 21983 / 22047 字节,实际是 22060 / 22124(各多 77 字节)。
+服务端的 PROPFIND 和 GET 都返回真实值、内容也完好(下载下来 sha256 与文件名一致),
+失真的是 restic 自己的索引。restic 按索引里的短长度去取 → rclone 用它声明
+Content-Length → 实际数据写超 → http2 断开 → `unexpected EOF` → 重试十次后熔断。
+症状固定:每次都停在 repack 阶段的同两个文件上。两条走不通的路,别再试:
+
+- **`repair index` 无效**:实测重建 2034 个索引之后,下一轮请求的长度还是 21983。
+- **只加 `--max-unused unlimited` 不够**:它管的是「为回收空间而 repack」,restic 还会
+  为合并过小的 pack 而 repack,那条路径照走不误(实测降级后仍 14/16 packs repacked
+  然后撞上第二个坏 pack)。
+
+有效的是 `--max-repack-size 0`(总共只准 repack 0 字节),两个一起加各堵一条路径。
+只在降级重试里用,健康仓库仍走完整清理。代价极小:实测 `to delete` 一个不少(4104 个
+blob 全在完全无引用的 pack 里,删它们只需 DELETE、不读内容),只是留下十几个部分使用
+的 pack,`unused size after prune: 1.761 KiB`。kp_cst 由此从 2053 个 pack / 1.448 MiB
+降到 20 个 / 56.9 KiB。
+
+#### 坚果云(kp_nutstore)是坏的,不要在它身上重复排查
+
+它有**频率封禁**:低频操作正常(单个文件的 rclone delete 确实生效),但 restic 那种
+半小时内几百次连续 DELETE 会撞上 `503 BlockedTemporarily: Too many requests are
+received recently`,而封禁窗口里的删除请求**返回成功却不生效**。四轮 prune 各报告
+"删掉七百多个快照",远端始终是 750 个文件,第四轮的 `remove 734` 和第一轮一模一样。
+对照组:同样操作下 cst 和 infini 都只剩十几个文件。
+
+现在它陷在死循环里:750 个快照 → 任何 restic 操作都要几百次请求 → 触发封禁 →
+删除失效、读取返回假 404(prune 会直接 `Fatal: failed loading snapshot`)→ 快照继续涨。
+连 `rclone size` 都会超时。**restic 这条路进不去**,别再试限速、重试或 repair。
+要救只能绕过 restic 一次性清空(WebDAV 对目录的 DELETE 是递归的,`rclone purge` 删
+整棵树只要一个请求),然后靠 `initialize = true` 重建;或者干脆把这个远端去掉。
+
+#### 备份侧的两项预防
+
+周期从 10 分钟放宽到 30 分钟(每天 432 次往返 → 144 次),并加上
+`--skip-if-unchanged`——内容和父快照一致就不生成新快照。**后一项要验证**:日志里每次都报
 `Dirs: 2 changed`(`/home` 和 `/home/xpj` 的 mtime 被别的进程碰过),如果它破坏了判定、
 日志里仍是 `snapshot saved` 而不是 `snapshot skipped`,就改用 `ExecCondition` 比对
 kdbx 自身的哈希。
@@ -211,8 +339,38 @@ kdbx 自身的哈希。
 `cc` tab 里那个循环面板(layout 在 `home-manager/develop/zellij/dev.kdl`,pane 里写的是
 `~/.nix-profile/bin/` 下的绝对路径,因为 zellij 的 command pane 不经过 shell)。
 实现分两半:`develop/claude-sessions.sh` 只管取宽度/差分重绘/按键,进程枚举和 transcript
-解析都在 `develop/claude-sessions.py`(纯标准库),渲染器的 store 路径由 Nix 注入 `RENDER_PY`
+解析都在 `develop/claude-sessions.py`(纯标准库),渲染器的路径由 Nix 注入
 —— shell 那份是 `builtins.readFile` 进来的,自己没法插值。
+
+**面板是长命进程,不会自己换代码。** bash 在启动那一刻就把当时那份 store 脚本读进去了,
+之后 `home-manager switch` 换代它完全不知道(pane 里写的是 `~/.nix-profile/bin/` 下的绝对
+路径,但那只在 exec 时解析一次)。2026-09-09 报的"session 检测又不准"就是这么来的:两个
+`--watch` 面板分别停在 09-04 和 09-08 起的进程上,少了 09-08 那次 `first_epoch` 修复,
+终端会话永远显示"尚未对话" —— 代码早修好了,面板没跟上。
+自动换代(见下)之后这种情况不该再出现,再出现先怀疑 `maybe_reexec` 自己坏了。查法(不一致就是它):
+
+```bash
+ps -eo pid,lstart,args | grep '[c]c-sessions'
+readlink /proc/<pid>/fd/255          # bash 实际在跑的那份脚本
+readlink -f ~/.nix-profile/bin/cc-sessions
+```
+
+**现在两半都能自己换代,面板不再需要手动重启。** 分工:
+
+- **渲染器**单独成包(`ccSessionsRender`,装到 profile 的 `share/cc-sessions/render.py`),
+  `render()` 每轮优先解析 `~/.nix-profile/share/cc-sessions/render.py`,注入的 store 路径只兜底。
+  用 `~` 不用 `$HOME`:脚本开着 `nounset`,HOME 万一没设就是第一行 unbound variable 直接死;
+  波浪号展开不走参数展开,HOME 缺失时 bash 自己回落 passwd。
+- **驱动那半**(现在这个 sh 文件)改不了内存里已经读进去的自己,只能 `exec` 换掉:
+  `maybe_reexec()` 每轮拿 `readlink -f /proc/$$/fd/255`(bash 执行脚本时把脚本开在 fd 255,
+  内核已经把符号链接解开,拿到的就是 store 路径)和 `readlink -f ~/.nix-profile/bin/cc-sessions`
+  比一下,不同就 `exec "$live" --watch "$interval"`。同一个 pid 原地换代,实测改动 + switch 后
+  下一轮(1s 内)就跟上了,回滚也一样跟。`exec` 不跑 EXIT trap,所以换之前要自己 `\033[?25h`
+  把光标放回来(新进程起来会再藏一次)。
+
+注意判自身路径不能用 `$0`/`$BASH_SOURCE`:那是**调用时**用的 `~/.nix-profile/bin/cc-sessions`,
+`readlink -f` 会解析到当前代,永远等于 live,比不出差异。也不要用 `pgrep -f cc-sessions` 找面板
+——`bash -c` 那层包装的命令行里也含这个串,`pkill -f` 会连发起命令的 shell 一起杀掉(踩过)。
 
 判据是**进程**:插件里的每个会话都是所属窗口 extension host 的直接子进程,进程在就是活跃。
 进程到窗口的映射只有一条路 —— extension host 继承的日志 fd 路径里带 `window<N>`;
@@ -221,17 +379,62 @@ makeWrapper 的 bash 脚本,进程名是 `.claude-wrapped`,枚举时两个名字
 
 标题(`aiTitle`)和状态都在 transcript 里,所以得先把 pid 映射到
 `~/.claude/projects/<slug>/<sessionId>.jsonl`(slug 是 cwd 里的非字母数字全换成 `-`)。
-resume 的会话命令行里直接带 sessionId;新会话没有,靠一条单向约束认领:transcript 一定由
-某个 claude 进程创建,首条记录时间必然晚于该进程启动。同一 cwd 下按启动时间升序,每个进程
-认领「首条时间晚于自己且尚未被认领」的最早那个,配不到就是"尚未对话"(panel 开着但一句话
-没说)。已知错配:`/clear` 之后会留下两个都满足约束的文件,同 cwd 若还有个启动更晚的新会话,
-它会认领到本该属于前者的第二个;罕见,没为它加复杂度。
 
-状态只能看 assistant 行的 `message.stop_reason`(`tool_use`/`pause_turn`/`null` 算运行中),
+**这个映射现在由 Claude Code 自己给出**:2.1.266 起每个会话在
+`~/.claude/sessions/<pid>.json` 写一份边车文件,里面有 `sessionId` / `cwd` / `procStart` /
+`entrypoint`(`cli` 还是 `claude-vscode`)/ `messagingSocketPath`。确定性映射,没有猜的成分。
+两个用法上的坑:
+
+- **必须核对 `procStart`**(就是 `/proc/<pid>/stat` 的第 22 项 starttime,json 里是字符串)。
+  进程退出时文件不保证被清掉,而 pid 会复用 —— 只按 pid 取会张冠李戴。
+- **`updatedAt` 不是心跳**:实测卡在启动期对话框的会话,`updatedAt`/`statusUpdatedAt`
+  停在启动后 2 秒,三小时没动过。别拿它或文件 mtime 当活跃度。
+
+存活判据仍然是 `/proc` 里的进程枚举,边车只按 pid 做补充查找 —— 反过来从
+`~/.claude/sessions/` 目录枚举会把崩溃残留当成活会话。
+
+边车文件不存在(旧版本二进制)时退回原来的启发式认领:transcript 一定由某个 claude 进程创建,
+首条记录时间必然晚于该进程启动。同一 cwd 下按启动时间升序,每个进程认领「首条时间晚于自己
+且尚未被认领」的最早那个。已知错配:`/clear` 之后会留下两个都满足约束的文件,同 cwd 若还有个
+启动更晚的新会话,它会认领到本该属于前者的第二个;罕见,没为它加复杂度。
+
+**拿到 sessionId 但 transcript 文件不存在 = "尚未对话",不是"状态未知"。**
+会话开着对话框(边车里 `status: "waiting"`、`waitingFor: "dialog open"`)时一条 transcript
+都不会落盘,全盘也搜不到那个 sessionId 的任何痕迹(没 todos、没 file-history)。
+2026-09-09 的 `claude-config/finance` 就是这个状态,面板显示"尚未对话"是对的。
+
+**下面这段 `first_epoch` 的教训只对 fallback 那条路适用了**,但别删:找"首条时间"的窗口不能写死几行:jsonl 开头有一串没有 timestamp 的元数据行
+(`mode` / `permission-mode` / `atis-latch` / `bridge-session` / `file-history-snapshot` ...),
+数量随版本增加,实测首条带 timestamp 的记录已经退到第 6 行。窗口只有 5 行时 `first_epoch()` 返回 None、该 transcript
+根本不进认领池,于是新会话(命令行里没有 sessionId)永远显示"尚未对话",标题和状态全丢——
+2026-09-08 终端会话就是这么"没被检测到"的。现在扫到第一条带 timestamp 的行为止
+(40 行 / 256KB 兜底),元数据行都只有几百字节,放宽几乎没有代价。
+
+状态仍然以 transcript 为准,**边车里的 `status` 只有 `entrypoint: cli` 的会话有**
+(VS Code 那些连字段都没有,包括正在跑的),所以它只用来兜"transcript 读不出状态"这一种情况。
+`stop_reason` 那套是唯一对两种入口都成立的判据:状态只能看 assistant 行的 `message.stop_reason`(`tool_use`/`pause_turn`/`null` 算运行中),
 **不能看这一行有没有 tool_use block**:一条 assistant 消息的每个 content block 是分行写的
 (thinking 一行、text 一行、tool_use 一行),但同一条消息的所有行带同一个 stop_reason。
 按 block 判的话,运行中的会话尾部常常正好停在 thinking 行,会误报成"等你回话",状态在
 ●/○ 之间反复跳,每跳一次还白触发一次重绘。
+
+**user 行也不能一律当成"Claude 的回合"**:按 ESC 打断时落盘的是一条 user 行,内容就是
+`[Request interrupted by user]`(拒工具调用那次是 `...by user for tool use]`)。Claude 已经
+停在这儿了,panel 还开着、进程还在,只按"末行是 user 行"判就永远显示运行中。判定必须是
+**整行文本恰好等于标记**:打断后立刻又输入的话,标记和新输入落在同一条 user 消息里
+(`[Request interrupted by user] 还在干活吗`),那种是真的在跑,用子串/前缀匹配会反过来误判。
+抽样确认过 API 出错停下不需要单独处理:那条 `isApiErrorMessage` 的 assistant 行
+`stop_reason` 是 `stop_sequence`,本来就落在"等你回话"一侧。
+
+**后台子代理运行期间会显示"等你回话",刻意不修。** 主 agent 派完后台子代理就结束了本轮
+(`stop_reason: end_turn`),子代理完成时再把会话唤醒接着跑 —— 这中间面板显示 ○,但它马上
+会自己继续。不修的理由是代价不对等:通知是 push,误报打断你手上的事(所以 `claude-code.nix`
+的 Stop hook 按 `background_tasks` 压掉了那几条);面板是 pull,扫一眼白切一次窗口而已,
+而且它回答的本来就是"Claude 在不在跑",没承诺回答"它会不会自己接着跑"。
+真觉得烦要修的话走 hook → `$XDG_RUNTIME_DIR` 文件那条(`background_tasks` 是权威源),
+并把陈旧兜底一起做(文件带 `prompt_id`、进程死了不认、SessionEnd 删);
+**不要解析 transcript 配对 `agentId:` 和 `<task-id>`** —— 看着可行(两个 id 确实相同),
+但 `SendMessage` 续跑同一个子代理时不写 launch 标记,那一轮照样漏判。
 
 而且**尾部必须按行倒读,不能固定读尾部若干 KB**:transcript 里单条记录能到 100KB+
 (整份 CLAUDE.md 的 attachment 行、大 tool_result),一条就把固定窗口吃光,一行都
@@ -340,6 +543,139 @@ notify-send 通知、`cc-sessions` 里也会出现这些会话——不是 bug,�
 `mode = "acceptEdits"`:文件编辑自动放行,其他工具仍在飞书里问一次。想全自动改
 `"bypassPermissions"`,想更保守改 `"default"`。注意本仓库的 kubectl 守卫 hook 仍然生效
 (它返回 `permissionDecision=ask`),生产集群的写操作会在飞书里弹确认。
+
+### mihomo 的双地点切换(一个 OUT 开关)
+
+常驻新加坡、间歇回国,两地需要的东西**是相反的**,所以出境规则全部走一个
+`OUT` selector(成员 `[MESL, DIRECT]`),切地点只改这一个:
+
+```bash
+netloc cn          # 回国:OUT=MESL + claude=MESL_Claude,然后逐项核对
+netloc sg          # 回新加坡:两个都 DIRECT
+netloc             # 只看状态,不做改动
+netloc cn --quick  # 跳过节点健康检查(那一步 1-2 分钟)
+netloc --fix-tun   # tun 掉了就顺手开回来
+```
+
+`--fix-tun` **是显式开关,不做成默认**:tun 在 mihomo 没重启的情况下静默消失过两次
+(2026-09-12 的 00:36 和 01:57,journal 里都没有关闭记录,01:51 前后有一串
+`[TUN] Auto detect interface ... failed, return '<invalid>'`)。每次都默默修掉就看不出
+它多久掉一次了,所以不带这个 flag 时脚本只报告。PATCH 只改运行时,配置里本来就是
+`enable: true`。
+
+`netloc` 在 `home-manager/netloc.nix`(打包)+ `netloc.sh`(主体,`writeShellApplication`
+会对它跑 shellcheck)。**两个 selector 都得切**,所以没做成"一条 PUT 完事":claude 组的
+判据是账号安全而不是速度,不能跟着 OUT 走。
+
+脚本刻意**不开 errexit、不在中途 exit**:每步失败都记下来继续跑完、最后统一非 0 退出,
+一次输出看清所有线索——半路退出会让人少看到后面的失败。它在两条 PUT 之外还查四处:
+读回值是否真的生效(PUT 返回 204 但没生效 = 目标不是该组成员)、tun 网卡在不在、
+订阅里有多少节点从当前网络可达、以及 claude 组有没有停在危险的那一侧。连通性自检按
+地点选目标:国内测 google(被 GFW 封,能验证出境链路),新加坡测 polymarket
+(被本地 DNS sinkhole,只有 DNS 被接管且拿到真实 IP 才通)。
+
+节点存活统计里那句 `alive and (history[-1].delay > 0)` 两个条件都要:`alive` 字段在
+从没测过的节点上也是 true(`updatedAt` 是 `0001-01-01` 的那些),只看它会把一整个
+未测过的订阅报成"全可用"。仓库列表从 `/providers/proxies` 里按 `vehicleType == "HTTP"`
+派生,增删机场不用改脚本。
+
+`profile.store-selected: true` 让选择跨重启保留,所以这是每趟一次的操作,不是每次开机。
+不要改成 `mode: direct`:那会连带废掉 `IP-CIDR 10.x → RFvpn` 那几条公司内网路由,
+而且 rules/DNS 都没法在运行时 PATCH,只有 selector 能。
+
+#### 两地的墙不是一回事(2026-09-12 实测)
+
+| | 中国 | 新加坡 |
+| --- | --- | --- |
+| 机制 | GFW:DNS 污染 + IP 封 | **纯 DNS sinkhole,IP 层不封** |
+| 需要 | 真代理出境 | 直连即可,只要 DNS 干净 |
+
+新加坡这边 `polymarket.com` 和 `bet365.com` 被本地 DNS 解析到同一个 AWS sinkhole
+(`13.248.219.95` / `76.223.70.70`),连上去 0.06s 就失败;而强制用真实 IP
+(`104.18.34.205`)直连是 200 / 0.4s,clob API 也返回完整数据。**所以在新加坡不需要任何
+代理,只要 DNS 是干净的。**受限辖区是 "The US, Ontario, GB, and OFAC",新加坡不在内。
+
+反过来,机场(MESL)是**国内中转型**:172 个节点只挂在两个入口上,都在中国大陆——
+`cl-188` → `106.75.239.109`(上海联通),`cl-199` → `106.75.129.72`(广州电信)。
+从新加坡看:上海那个通但 ping 341ms,广州那个 ICMP 100% 丢包、TCP 超时。挂在 cl-199 的
+132 个节点(**包括全部 12 个新加坡 + 15 个香港**)因此全废,能用的 39 个全在 cl-188。
+于是出现反直觉的现象:人在新加坡,连不上新加坡节点——它们的入口机在广州。
+
+cl-199 到底是路径问题还是机场故障,**在新加坡分辨不出来**(裸 IP 会落到 `MATCH,DIRECT`,
+组延迟测试也不会对 anytls 端口说 HTTP)。回国落地后第一件事跑一次,活了就是跨境路径问题:
+
+```bash
+curl -s "http://127.0.0.1:9097/providers/proxies/mesl_providers/healthcheck"
+```
+
+#### claude 组的目的是账号安全,不是速度
+
+这组存在的理由是给 Claude 一个干净且合规的出口。**曾经的配置(钉在 `MESL_Claude_low`)
+起的是反作用**,实测两个出口的风控画像:
+
+```
+机场日本节点 103.62.49.148   proxy=True  hosting=True   GSL Networks Pty LTD
+本机 Singtel 119.234.106.181  proxy=False hosting=False  mobile=True
+```
+
+机场出口是被打上 proxy + hosting 双标记、且机场几百个订阅用户共享的数据中心 IP;自己的
+移动 IP 两项标记全 false 且独享。更糟的是 `MESL_Claude_low` / `MESL_Claude` 都是
+`url-test`、`interval: 60`,每分钟换节点——一个账号的请求来自不断变化、还跨国跳的数据中心
+IP,比任何单个数据中心 IP 都更像异常信号。所以在支持地区(新加坡在列)**直连才是最干净的**。
+
+中国大陆和香港**都不在 Anthropic 支持地区列表**,政策条款是禁止
+"Access or facilitate account or API access to Claude ... in violation of our Supported
+Regions Policy",后果写的是 "throttle, suspend, or terminate"。所以回国那周必须走代理,
+落地点要在支持地区(日本/美国/新加坡都在列)。`MESL_Claude` 实测有 10 个日本节点对
+`api.anthropic.com` 可用(354-436ms)。
+
+组类型是 `fallback`、成员顺序 `[DIRECT, MESL_Claude, MESL_Claude_low]`,健康检查用
+`gstatic.com/generate_204`——新加坡 DIRECT 能过就直连,中国 Google 被墙则自动降级。
+代理层优先 `MESL_Claude`(33 节点)而不是 `MESL_Claude_low`(3 节点):账号安全场景不该
+为了 0.3X 倍率把自己锁在 3 个节点上。
+
+**但有个启动窗口期,回国那天要当回事。** `store-selected` 会先恢复上次存的选择,健康检查
+才纠正它。纠正确实会发生(把 claude 钉到已知 Timeout 的组,之后它自己回到了 DIRECT),
+但**收敛耗时没测准,实测范围是几十秒到两三分钟**——rebuild 后它就在存的旧值上停了 2-3 分钟。
+落地时存的是 `DIRECT`(在中国就是中国 IP),所以别指望自动纠正,顺序必须是
+**先切、后用**,开 Claude 之前核对一次:
+
+```bash
+curl -s 127.0.0.1:9097/proxies/claude | grep -o '"now":"[^"]*"'
+```
+
+另外 `sentry.io` 不要挂在 claude 组里(曾经是):它不是 Anthropic 专属的域名,而是几千家
+服务共用的错误上报后端,挂在这儿只会把无关遥测推到 Claude 的出口上。
+
+#### tun 是 DNS 那半的前提,`/configs` 的 tun 字段不可信
+
+tun 是唯一劫持系统 DNS 的环节。关掉它,解析回落到本地 resolver——在新加坡就是直接吃
+sinkhole(实测 tun 关时 `polymarket.com` 解析到 `76.223.70.70`、浏览器 `http=000`,
+而经 `127.0.0.1:7897` 同时刻是 200)。
+
+判断 tun 有没有起来**看 `ip -br addr | grep Mihomo`**,不要看 `/configs` 的
+`tun.enable`:实测它报 `false` 的同时,日志里 `Tun adapter listening at:
+Mihomo([198.18.0.1/30])` 且 fake-ip 流量正在转发。
+
+还有一个坑:**tun 开着而 `OUT=MESL` 在新加坡会让人以为"网络坏了"**——出境流量全被推去
+广州入口,日志里是成片的
+`dial OUT (match RuleSet/gfw) ... dial tcp 106.75.129.72:35101: i/o timeout`。
+遇到这个先查 `OUT` 指向哪儿,别去动 tun。
+
+#### DNS:gfw 名单在直连时走境外 DoH
+
+`nameserver-policy` 给 `rule-set:gfw` 配了 `1.1.1.1` / `dns.google`。国内场景这些域名
+走代理、fake-ip 直接返回,这条策略不触发;新加坡场景它们走 DIRECT 才需要本地真实解析,
+此时用境外 DoH。日志确认生效:
+`[DNS] polymarket.com --> [104.18.34.205 ...] A from https://1.1.1.1:443/dns-query`。
+
+回国时(`OUT=MESL`)本地 DoH 仍是国内那两个,但这不影响:gfw 域名走代理,主机名交给
+anytls 节点、解析在节点侧完成,本地拿到的污染结果无关(2026-09-12 实测
+`polymarket 200 via OUT[日本 02]`)。
+
+这条是**消除不确定性,不是必需项**:国内 DoH 实测有一次把 polymarket 解析成 Twitter 的 IP
+(`192.133.77.59`),但几分钟后又正常了,去掉这条策略的对照组也能通。DoH 传输本身不可被
+中间人污染,可国内递归器向上游走明文,缓存有被污染的窗口。
 
 ### himalaya + QQ 邮箱(mail.nix)
 

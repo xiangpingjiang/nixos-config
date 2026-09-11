@@ -32,7 +32,7 @@ let
 in
 {
   services.mihomo = {
-    enable = false;
+    enable = true;
     tunMode = true;
     webui = pkgs.metacubexd;
     configFile = config.sops.secrets.mihomo_config.path;
@@ -167,14 +167,21 @@ in
           # `repair index` 治不了这个:实测重建 2034 个索引之后,下一轮请求的长度
           # 还是 21983。别再往那条路上走。
           #
-          # 能绕过去的是不去读它们。--max-unused unlimited 让 prune 只删「完全没有
-          # 被引用」的 pack、不为回收零头去 repack,那两个坏 pack 连同其它十几个
-          # 部分使用的 pack 一起留在原地。代价是空间回收不彻底,而这个仓库清完
-          # 只剩 50 KiB 有效数据,那点零头无所谓。
+          # 能绕过去的是不去读它们:repack 要把 pack 整个流回来,而删除一个完全没被
+          # 引用的 pack 只需要一次 DELETE、不读内容。所以禁掉 repack 就绕开了坏 pack,
+          # 4102 个待删 blob 一个都不少(实测降级前后这个数字完全一样——它们全都躺在
+          # 完全无引用的 pack 里),留下的只是那十几个部分使用的 pack 里的零头,
+          # 而这个仓库清完总共才 50 KiB 有效数据,零头无所谓。
+          #
+          # **必须用 --max-repack-size 0**。只加 --max-unused unlimited 不够:
+          # 它管的是「为回收空间而 repack」,restic 还会为合并过小的 pack 而 repack,
+          # 那条路径照走不误——2026-09-07 实测,降级后仍然 [13:50] 14/16 packs repacked
+          # 然后撞上第二个坏 pack 熔断。--max-repack-size 0 是「总共只准 repack 0 字节」,
+          # 两条路径一起堵死。两个都留着,各堵一条,不要只留一个。
           # 只在降级重试里加,不放进上面的正常路径:infini 那种健康仓库仍然完整清理。
           if ${pkgs.gnugrep}/bin/grep -qE "circuit breaker|unexpected EOF" "$log"; then
-            echo "!! $repo 有读不回的 pack，改用 --max-unused unlimited 重试一次"
-            run_prune "$repo" --max-unused unlimited && continue
+            echo "!! $repo 有读不回的 pack，禁用 repack 重试一次"
+            run_prune "$repo" --max-repack-size 0 --max-unused unlimited && continue
           fi
 
           echo "!! prune 失败: $repo（继续下一个仓库）"

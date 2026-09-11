@@ -1,4 +1,5 @@
 {
+  config,
   inputs,
   pkgs,
   lib,
@@ -108,7 +109,7 @@ let
   #   nix store prefetch-file --json --name claude \
   #     "https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases/<version>/linux-x64/claude"
   # 查上游当前最新版本:curl -s "https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases/latest"
-  claudeCodeVersion = "2.1.263";
+  claudeCodeVersion = "2.1.268";
   claudeCodeUpstream = inputs.llm-agents.packages.${pkgs.stdenv.hostPlatform.system}.claude-code;
   claudeCodePkg =
     if lib.versionAtLeast claudeCodeUpstream.version claudeCodeVersion then
@@ -120,7 +121,7 @@ let
         version = claudeCodeVersion;
         src = pkgs.fetchurl {
           url = "https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases/${claudeCodeVersion}/linux-x64/claude";
-          hash = "sha256-JtAgNR6BEvQAZ5Dzz85DtMnfDBux0OVCNk1kFRuB1bo=";
+          hash = "sha256-lpGit715ZxLKjP+44y5U/3/EW2YlQCMxcaFqlKBCVlM=";
         };
       });
   # 跨窗口列出活跃的 Claude Code 会话(zellij 的 cc tab 循环跑的就是它,见 zellij/dev.kdl)。
@@ -130,6 +131,17 @@ let
   # 不经过 shell,PATH 取决于 zellij 服务端从哪里起的,不能指望调用者的环境。
   # bashOptions 显式去掉默认的 errexit:新开的会话命令行里没有 --resume,
   # `sid=$(... | grep -oP ...)` 无匹配返回 1 是正常路径,-e 下会当场终止整个脚本。
+  # 渲染器单独成包放进 profile 的 share/,好让 --watch 面板能走一条跨代稳定的路径:
+  # 面板是个长命进程,bash 启动时就把当时那份 store 脚本读进去了,之后 home-manager
+  # switch 换代它完全不知道 —— 2026-09-09 就是这么"检测又不准"的:两个面板分别停在
+  # 09-04 / 09-08 的渲染器上,少了 09-08 那次 first_epoch 修复,终端会话永远显示"尚未对话"。
+  # 逻辑全在渲染器里,所以让它每轮从 ~/.nix-profile 重新解析,switch 完立刻生效、不用重启 pane;
+  # 驱动那半(取宽度/差分重绘/按键)改动少,陈旧了影响也有限,仍然只在重启 pane 时更新。
+  ccSessionsRender = pkgs.writeTextFile {
+    name = "cc-sessions-render";
+    destination = "/share/cc-sessions/render.py";
+    text = builtins.readFile ./claude-sessions.py;
+  };
   ccSessions = pkgs.writeShellApplication {
     name = "cc-sessions";
     runtimeInputs = with pkgs; [
@@ -140,15 +152,122 @@ let
       "nounset"
       "pipefail"
     ];
-    # 渲染器路径由 Nix 注入:shell 那份用 readFile 进来的,自己没法插值 store 路径
+    # 两个渲染器路径都由 Nix 注入:shell 那份是 readFile 进来的,自己没法插值 store 路径。
+    # LIVE 是随代更新的 profile 路径(优先),PY 是钉死在本代的 store 路径(兜底:
+    # profile 里还没有这个包,或者被直接从 store 调用)。用 `~` 而不是 `$HOME`:
+    # 这里开着 nounset,HOME 万一没设就是脚本第一行 unbound variable 直接死,
+    # 而波浪号展开不走参数展开,HOME 缺失时 bash 自己回落到 passwd。
     text = ''
-      RENDER_PY=${./claude-sessions.py}
+      RENDER_PY_LIVE=~/.nix-profile/share/cc-sessions/render.py
+      RENDER_PY=${ccSessionsRender}/share/cc-sessions/render.py
     ''
     + builtins.readFile ./claude-sessions.sh;
   };
+  # ---- 国内模型兜底入口(claude-ds)----
+  # 官方 API 连不上时的备用通道。DeepSeek / 智谱 / Moonshot 都直接提供 Anthropic
+  # 兼容端点,所以不需要 claude-code-router 这类协议转换层多绕一跳
+  # (那东西只在 provider 没有原生端点、或要按难度在多家之间路由时才值得引入)。
+  #
+  # 切换走 `claude --settings <store json>`:这一层的优先级仅次于 managed settings,
+  # 压得过 ~/.claude/settings.json,而且是叠加不是替换 —— hooks、permissions、
+  # 全局 CLAUDE.md 全部照常生效,只有 env 里列出的那几个键被换掉。
+  # 反过来,手动 `ANTHROPIC_BASE_URL=... claude` 在本机不生效:settings 文件的 env 块
+  # 会替换掉从 shell 继承的同名变量(文档原文如此,实测也是)。下面 settings.env 里
+  # 那行 ANTHROPIC_BASE_URL 因此被删掉了 —— 它填的就是默认值,留着唯一的效果是堵死
+  # 手动 export 这条救急路径。
+  #
+  # 密钥不进这份 JSON:store 是全局可读的。wrapper 里 export ANTHROPIC_AUTH_TOKEN,
+  # 而 settings 里**不写**这个键 —— 只有没被列出的变量才轮得到 shell 的值(已实测)。
+  # 顺带:AUTH_TOKEN 一旦设了就压过已登录的 OAuth,不会把公司账号的 token 发给第三方。
+  #
+  # 四个模型别名都要映射。全局 CLAUDE.md 让主模型按 haiku/sonnet/fable 委派子代理,
+  # 漏掉 fable 那条委派路径会当场撞未知模型(DeepSeek 官方那份配置里没有 fable)。
+  # 注意兜底状态下这套分工只剩形式:四个别名指向同一个模型,委派省不下钱,
+  # 唯一还成立的作用是把子任务隔离在独立上下文里。
+  mkFallbackClaude =
+    {
+      name,
+      baseUrl,
+      apiKeyPath,
+      applyHint,
+      models,
+      autoCompactWindow,
+    }:
+    let
+      settingsFile = pkgs.writeText "claude-${name}-settings.json" (
+        builtins.toJSON {
+          env = {
+            ANTHROPIC_BASE_URL = baseUrl;
+            # 文档:空值等于"未设"(用于提供商选择)。显式清掉,免得环境里恰好有
+            # ANTHROPIC_API_KEY 时它抢在 AUTH_TOKEN 前面被当成鉴权源。
+            ANTHROPIC_API_KEY = "";
+            ANTHROPIC_DEFAULT_OPUS_MODEL = models.opus;
+            ANTHROPIC_DEFAULT_SONNET_MODEL = models.sonnet;
+            ANTHROPIC_DEFAULT_HAIKU_MODEL = models.haiku;
+            ANTHROPIC_DEFAULT_FABLE_MODEL = models.fable;
+            CLAUDE_CODE_SUBAGENT_MODEL = models.subagent;
+            # 模型名不在 Claude Code 的 catalog 里时,它按 200k 假设上下文窗口并据此
+            # 提前 auto-compact。模型名后缀 [1m] 声明真实窗口(纯本地解析,实测发出去的
+            # model 字段已经把后缀剥掉),这一项再把 compact 阈值抬到窗口的 3/4。
+            CLAUDE_CODE_AUTO_COMPACT_WINDOW = toString autoCompactWindow;
+          };
+        }
+      );
+    in
+    pkgs.writeShellApplication {
+      name = "claude-${name}";
+      runtimeInputs = [ pkgs.coreutils ];
+      bashOptions = [
+        "nounset"
+        "pipefail"
+      ];
+      # sops 解出来的明文在 tmpfs 上,重启即失、由 sops-nix.service 重建;
+      # 读不到或还是占位值时直接退出,不要带着空 token 去撞 401。
+      text = ''
+        key=$(cat ${apiKeyPath} 2>/dev/null || true)
+        if [ -z "$key" ] || [ "$key" = "REPLACE_ME" ]; then
+          {
+            echo "claude-${name}: 还没有可用的 API key。"
+            echo "  1. ${applyHint}"
+            echo "  2. sops secrets/llm-keys.enc.yaml   # 填进去"
+            echo "  3. home-manager switch --flake . -b backup -v"
+          } >&2
+          exit 1
+        fi
+        export ANTHROPIC_AUTH_TOKEN="$key"
+        exec ${claudeCodePkg}/bin/claude --settings ${settingsFile} "$@"
+      '';
+    };
+
+  # DeepSeek:按量付费,没有起步价,适合"以防万一"这种低频用法。
+  # 模型名和这套环境变量抄自官方集成文档
+  # (https://api-docs.deepseek.com/quick_start/agent_integrations/claude_code),
+  # 只补了官方没写的 FABLE 别名。deepseek-flash 是当前在售型号,v4-pro 官方已宣布
+  # 9-14 之后继续提供;没必要钉 pro —— 它贵一个数量级,而 Claude Code 这种高频
+  # 工具调用场景瓶颈在往返次数不在单次推理深度。
+  # 未支持的模型名会被服务端自动映射到 deepseek-flash,所以配错也不会 400。
+  claudeDeepseek = mkFallbackClaude {
+    name = "ds";
+    baseUrl = "https://api.deepseek.com/anthropic";
+    apiKeyPath = config.sops.secrets.deepseek_api_key.path;
+    applyHint = "去 https://platform.deepseek.com 申请 API key";
+    autoCompactWindow = 786432;
+    models = {
+      opus = "deepseek-flash[1m]";
+      sonnet = "deepseek-flash[1m]";
+      fable = "deepseek-flash[1m]";
+      # haiku 还兼任后台任务(起标题、判断要不要 compact 之类),这些不需要 1M 窗口
+      haiku = "deepseek-flash";
+      subagent = "deepseek-flash";
+    };
+  };
 in
 {
-  home.packages = [ ccSessions ];
+  home.packages = [
+    ccSessions
+    ccSessionsRender
+    claudeDeepseek
+  ];
 
   programs.claude-code = {
     enable = true;
@@ -159,11 +278,20 @@ in
     # 多模型分工(写入全局 ~/.claude/CLAUDE.md):
     # Claude Code 没有内置的"按难度自动换模型"路由(model-config 文档确认),
     # 这里组合两个机制:主会话跑 Opus + Fable 做 advisor(见 settings.advisorModel),
-    # 再由主模型用 Agent 工具按难度分流:机械/常规工作给更便宜的 haiku/sonnet,
-    # 能一次性描述清楚的整块高难度任务给 fable 子代理(Agent 的 model 参数;
+    # 再由主模型用 Agent 工具分流:机械/常规工作给更便宜的 haiku/sonnet,
+    # 能一次性描述清楚的整块大活儿给 fable 子代理(Agent 的 model 参数;
     # /model 只有用户能手动执行)。
     # 2026-09-02 曾切成"Fable 主会话、不配 advisor",当天又切回来:Fable 主模型
     # 只接受 Fable 做 advisor,等于每一轮都跑最贵的模型还分不了层,与省钱目标相悖。
+    #
+    # 2026-09-12 把 fable 那条的门槛从"高难度"改成"工作量和范围",并加了"拿不准
+    # 也优先给它"。起因是查用量时发现 Fable 池一周只用到 2% —— 委派条件写成
+    # "大型重构 / 疑难 debug / 深度调研",而本机最近 40 个会话中位只有 51 轮、
+    # 内容以查日志跑 SQL 读代码为主,没有一个够得上那个门槛,于是这条通道形同虚设。
+    # 官方对 Fable 的定位本来也是"长自主任务"(长度和自主性)而不是"难题",
+    # 按范围判比按难度判更贴合,也更容易触发。
+    # 同时记一条文档事实:子代理继承 advisorModel,fable 子代理会带着 fable advisor
+    # (合法配对,但双倍消耗且更慢),所以 context 里要求委派时在 prompt 注明别再咨询。
     # 改本文件前先查官方文档:https://code.claude.com/docs/(页面索引在 /docs/llms.txt)
     #
     # 后两节(回答风格 / 工具使用)是评估 caveman、context-mode 两个 token 优化项目后的留存物。
@@ -172,9 +300,12 @@ in
     # 两者的招牌收益(caveman 的 65%、context-mode 的 98%)都落不到本机,不值得装,
     # 但各有一条规则有真实增量,直接写进 context:零安装,也不额外占 context(本文件本来就常驻)。
     context = ''
-      # 模型分工策略(节省 token 费用)
+      # 模型分工策略(把活儿分到对的模型和用量池)
 
-      主会话运行在 Opus,并配置了 Fable 作为 advisor。分工原则:
+      主会话运行在 Opus,并配置了 Fable 作为 advisor。Opus 和 Fable 各有自己的用量
+      上限,**Fable 那个池子长期闲置**(实测一周只用到 2%,几乎全是 advisor 触发的)。
+      所以这套分工有两个方向:往下把机械活儿卸给 haiku/sonnet,往上把够格的大活儿
+      推给 fable —— 后者一直没被用起来,是当前的短板。分工原则:
 
       - **advisor(Fable)** —— 关键决策点主动咨询:确定技术方案前、
         同一错误反复出现时、宣布任务完成前、安全/密钥相关改动前。
@@ -184,9 +315,12 @@ in
         格式转换、按明确清单执行的操作。
       - **sonnet(Agent 工具委派,显式传 model 参数)** —— 常规子任务:
         普通编码修改、写测试、常见 bug 修复、资料调研与总结。
-      - **fable(Agent 工具委派,显式传 model 参数)** —— 整块的高难度任务:
-        大型重构、跨文件迁移、疑难 debug、深度调研。这是唯一不需要用户手动
-        /model 就能让 Fable 真正干活的路径,由主模型自己判断是否启用。
+      - **fable(Agent 工具委派,显式传 model 参数)** —— 整块的、能一次性描述清楚的
+        大活儿。判据是**工作量和范围**,不是"难不难":跨多个文件的改动、成体系的调研、
+        需要反复验证的迁移、一次要读十几个文件才讲得清的排查,都够格。官方对 Fable 的
+        定位就是长自主任务(行动前先调查、更频繁地验证自己的工作),不必等到"疑难"
+        才想起它。这是唯一不需要用户手动 /model 就能让 Fable 干活的路径,
+        由主模型自己判断是否启用。
       - **主会话自己做(opus)** —— 需要较强推理或完整上下文的工作:
         方案设计、复杂 debug、跨文件改动的把关与收尾。
 
@@ -198,8 +332,14 @@ in
         追加信息,所以只在任务能一次性描述清楚时委派;打不包的就自己做。
       - 一两步就能完成的事不必委派,直接做(委派本身也有开销)。
       - 便宜模型返回的结果要过目,不放心的部分自己复核,不要盲信。
-      - 遇到整块的高难度任务,先判断能否一次性描述清楚:能就委派给 fable 子代理;
+      - 遇到整块的大活儿,先判断能否一次性描述清楚:能就委派给 fable 子代理;
         打不包(需要边做边对齐、依赖当前对话上下文)就自己做并在决策点咨询 advisor。
+        **不要为了"省"而自己硬扛或降级给 sonnet** —— 那既慢、又占 Opus 的额度,
+        而 Fable 是当前最不缺的那个池子。够格就给它,拿不准也优先给它。
+      - 给 fable 子代理的 prompt 里注明"不必再咨询 advisor":子代理会继承
+        advisorModel = fable(文档:Subagents inherit the configured advisor),
+        Fable 主 + Fable advisor 是合法配对,但等于双倍消耗还拖慢它,
+        而这种一次性打包出去的任务本来就不需要中途复核。
 
       # 回答风格
 
@@ -231,6 +371,20 @@ in
       autoAcceptEdits = false;
       showTurnDuration = true;
 
+      # 每个交互式会话启动时自动连上 Remote Control(手机/浏览器接管本机会话),
+      # 免得每次手动敲 /remote-control。等价于 /config 里的
+      # 「Enable Remote Control for all sessions」。
+      # 只有用户级(~/.claude/settings.json)和 managed settings 的 true 算数:
+      # 项目级 .claude/settings.json 里写 true 会被忽略(防止仓库替所有人打开),
+      # 写 false 则能就地关掉。本机这份正是用户级,所以生效。
+      # 注意每个 claude 进程各注册一个远程会话;要一个进程服务多个会话得用
+      # `claude remote-control` 的 server 模式,不是这个开关。
+      # 依赖 feature-flag 拉取:DISABLE_TELEMETRY / DO_NOT_TRACK /
+      # CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC / DISABLE_GROWTHBOOK 任一开着就用不了
+      # (本仓库的 env 块里都没设)。
+      # 文档:https://code.claude.com/docs/en/remote-control
+      remoteControlAtStartup = true;
+
       # 黑名单模式:bypassPermissions 下所有操作自动放行、不弹任何确认框,
       # 只有 ask 命中的操作会弹框询问(ask 规则在 bypass 模式下依然强制生效)。
       # 原来的 allow 列表在此模式下无意义,已删。
@@ -246,8 +400,10 @@ in
       skipDangerousModePermissionPrompt = true;
       # env 里的变量会注入会话及其子进程(含 Bash 工具跑的命令和 hooks),
       # 文档:https://code.claude.com/docs/en/settings-reference#env
+      # 这里刻意不写 ANTHROPIC_BASE_URL:它填的就是默认值,而 settings 的 env 会替换掉
+      # 从 shell 继承的同名变量 —— 留着唯一的效果是让 `ANTHROPIC_BASE_URL=... claude`
+      # 这条手动救急路径失效。要换端点走 claude-ds(见上面 mkFallbackClaude)。
       env = {
-        ANTHROPIC_BASE_URL = "https://api.anthropic.com";
         # lark-whiteboard skill 里画板工具全是 `npx -y @larksuite/whiteboard-cli@^0.2.13`
         # 这种浮动 range 调用,默认每次都联网向 registry 解析版本(还可能漂到 0.2.x 新版)。
         # prefer-offline 让 npx 在 ~/.npm 命中缓存时直接用本地(31MB 的 dist 含预编译 skia
@@ -298,12 +454,17 @@ in
           }
         ];
         # Claude 完成一轮回复时
+        # 会话里还有 running 的后台子代理时不发:它结束会把会话重新唤醒接着干,
+        # 这一次 Stop 只是中途停顿(实测一次提问因此触发了 3 次 Stop,最终那次
+        # background_tasks 才是 [])。判据刻意收窄到 type=="subagent",不写
+        # `background_tasks | length > 0`:后台 shell 可以是 dev server 这种不退出的进程,
+        # 那样整个会话就再也收不到通知了;子代理则必定结束、必定唤醒。
         Stop = [
           {
             hooks = [
               {
                 type = "command";
-                command = ''${detectApp}; dir=$(${pkgs.jq}/bin/jq -r '.cwd // ""'); ${notifyClick} dialog-ok "Claude Code task complete ($app)" "Project: $(basename "$dir")" "$dir"'';
+                command = ''${detectApp}; in=$(cat); [ "$(printf '%s' "$in" | ${pkgs.jq}/bin/jq '[.background_tasks[]? | select(.type == "subagent" and .status == "running")] | length')" = "0" ] || exit 0; dir=$(printf '%s' "$in" | ${pkgs.jq}/bin/jq -r '.cwd // ""'); ${notifyClick} dialog-ok "Claude Code task complete ($app)" "Project: $(basename "$dir")" "$dir"'';
               }
             ];
           }

@@ -1,5 +1,5 @@
 # 跨窗口列出活跃的 Claude Code 会话。这里只管终端交互:取宽度、差分重绘、按键;
-# 枚举进程、配 transcript、算标题和状态都在 claude-sessions.py 里($RENDER_PY 由 Nix 注入)。
+# 枚举进程、配 sessionId、算标题和状态都在 claude-sessions.py 里(路径由 Nix 注入)。
 
 term_cols() {
   local size
@@ -13,8 +13,27 @@ term_cols() {
   printf '100'
 }
 
+# 渲染器优先走 profile 里那条随代更新的路径:面板可能是几天前起的进程,bash 早就把
+# 当时那份 store 脚本读进内存了,switch 换代它不知道。每轮重新解析就不用为了拿到新逻辑
+# 重启 pane(RENDER_PY_LIVE / RENDER_PY 都由 claude-code.nix 注入,见那里的注释)。
 render() {
-  CC_WIDTH=$(term_cols) python3 "$RENDER_PY"
+  local py=$RENDER_PY
+  [[ -r $RENDER_PY_LIVE ]] && py=$RENDER_PY_LIVE
+  CC_WIDTH=$(term_cols) python3 "$py"
+}
+
+# 面板是长命进程,switch 换代它不会自己换代码:渲染器走上面那条 profile 路径已经能自动跟上,
+# 驱动这半(现在这个文件)只能靠 re-exec —— bash 启动时就把脚本读进内存了,改不了。
+# 自身路径从 fd 255 拿(bash 执行脚本时把它开在这儿,内核已经把符号链接解开,拿到的是 store 路径),
+# 和 profile 里当前那份比一下,不一样就把自己换成新的。这样面板永远不需要手动重启。
+maybe_reexec() {
+  local self live
+  self=$(readlink -f "/proc/$$/fd/255" 2>/dev/null) || return 0
+  live=$(readlink -f ~/.nix-profile/bin/cc-sessions 2>/dev/null) || return 0
+  [[ -n $self && -n $live && $self != "$live" ]] || return 0
+  # exec 不跑 EXIT trap,光标得自己放回来(新进程起来会再藏一次)
+  printf '\033[?25h'
+  exec "$live" --watch "$1"
 }
 
 # 逐行用 \033[K 覆盖 + 末尾 \033[J 清残留,而不是 \033[2J 全屏清空:
@@ -36,6 +55,7 @@ watch_loop() {
   if [[ ! -t 0 ]]; then
     # stdin 不是终端时 read -t 会立刻返回,退化成纯 sleep 轮询,免得空转刷屏
     while true; do
+      maybe_reexec "$interval"
       cur=$(render)
       [[ $cur != "$prev" ]] && { repaint "$cur"; prev=$cur; }
       sleep "$interval"
@@ -49,6 +69,7 @@ watch_loop() {
 
   while true; do
     if ((paused == 0)); then
+      maybe_reexec "$interval"
       cur=$(render)
       if [[ $cur != "$prev" ]]; then
         stamp=$(date '+%T')

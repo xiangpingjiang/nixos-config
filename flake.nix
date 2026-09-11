@@ -45,13 +45,21 @@
 
     # 飞书官方 CLI 仓库,这里只取它的 skills/ 目录(agent-skills 的 source 会把 root
     # 限定在 subdir 内,不会把整个 Go 项目导进 store)。flake = false:它不是 flake。
-    # 不钉 rev:只 fetch markdown、没有编译代价,跟随 main 让 skill 随上游更新;
-    # 上游新增 skill 也不会自动装上——agent-skills.nix 里是白名单。
-    # 注意 lark-cli 本体不走这份源:它是 nixpkgs 的包 + overrideAttrs 换 src 到最新 tag
-    # (见 home-manager/home.nix)。故意不共用——共用的话 skills 每次刷新都可能因为 go.mod
+    # 上游新增 skill 不会自动装上——agent-skills.nix 里是白名单。
+    #
+    # 钉在和 lark-cli 同一个 tag 上,两边同版本升级。原来这里跟随 main(理由是只 fetch
+    # markdown、没有编译代价),但 skill 文本是照着同版本 CLI 的行为写的,跟随 main 就会
+    # 单方面漂到 CLI 前面 —— 2026-09-11 实测:CLI 还在 1.0.92 时,main 的 lark-doc 已经要求
+    # `--presentation-decision '{}'`(旧 CLI 报 audience is required)、`@绝对路径`
+    # (旧 CLI 报 unsafe file path,绝对路径是 1.0.93 的 vfs 改动才放开的)、以及 init-draft
+    # 返回的 `data.cwd`(旧 CLI 压根不返回这个字段),三处全撞墙,而 shortcut 名字一个没变、
+    # 表面看不出不兼容。
+    #
+    # 仍然是独立 input,不和 lark-cli 的 src 共用:共用的话 skills 一刷新就可能因为 go.mod
     # 变动把一次例行 nix flake update 变成 vendorHash 构建失败。
+    # 升级手续:改这里的 tag,同时改 home-manager/home.nix 里 lark-cli 的 version(同一个版本号)。
     lark-skills = {
-      url = "github:larksuite/cli";
+      url = "github:larksuite/cli/v1.0.95";
       flake = false;
     };
 

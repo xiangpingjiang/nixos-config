@@ -30,11 +30,15 @@
     };
 
     # 本仓库自带的 skill(sourceType 支持 path 作为 input 的替代,见模块 modules/common.nix)。
-    # 只放"本机环境事实"这类上游不可能知道的内容:画图工具链装了什么、两个渲染器的差别、
-    # npx 的离线行为。绘图规范一律以上游 lark-whiteboard 为准,这里不复述——上游 skill 跟随
-    # main 自动更新,自建同主题内容过时后会反向误导。
-    # 之所以做成 skill 而不是写进 claude-code 的 context/CLAUDE.md:画图活是委派给 SubAgent 的,
+    # 只放"本机环境事实"这类上游不可能知道的内容:这台机器上某类活儿装了哪些工具、
+    # 它们的行为差异和坑、哪些操作在无图形会话里做不了(目前:画图工具链、PDF 工具链)。
+    # 通用规范不进来——有上游 skill 的一律以上游为准(如绘图规范以 lark-whiteboard 为准),
+    # 上游跟随 main 自动更新,自建同主题内容过时后会反向误导。
+    # 之所以做成 skill 而不是写进 claude-code 的 context/CLAUDE.md:这些活儿常委派给 SubAgent,
     # 它们跑在隔离上下文里读不到对话和 memory,skill 是唯一能自动到达它们的通道。
+    # 新增本地 skill 的手续:建 <name>/SKILL.md 后必须 `git add`(哪怕只是 `git add -N`),
+    # 再加进下面的白名单。flake 只看 git 追踪的文件,未 track 的 SKILL.md 不会进 store,
+    # switch 会以 "allowlist refers to unknown skill <name>" 失败,而报错本身不提 git。
     sources.local = {
       path = ./skills;
     };
@@ -60,6 +64,11 @@
       # 本机画图环境事实(见上方 sources.local)。名字故意不带 lark- 前缀:
       # 它不是飞书官方 skill,别让人误以为是上游文件的一部分。
       "local-diagram-env"
+
+      # 本机 PDF 环境事实(见上方 sources.local):五段工具各管什么、能直接抄的命令、
+      # 三个 GUI 在子代理/cc-connect 里不能调、okular 批注默认不入 PDF 的坑,
+      # 以及"不要装 masterpdfeditor / stirling-pdf / pip 装 pdf 库"这类止损条目。
+      "local-pdf-env"
     ];
 
     targets.claude = {

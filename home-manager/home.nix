@@ -112,26 +112,28 @@ let
   #        (tarball 那个也可以直接抄 release 里 checksums.txt 的 sha256)
   #   c. vendorHash 留旧值直接 build,go.mod 没动就直接过;动了则报错信息里带正确 hash,抄进来。
   #
-  # skills 走的是另一条路(flake input lark-skills 跟随 upstream main,见 flake.nix
-  # 和 develop/agent-skills.nix),故意不跟这里共用一份源码:那样每次 skills 刷新都可能
-  # 把一次例行 nix flake update 变成 vendorHash 构建失败。
+  # skills 走的是另一条 input(lark-skills,见 flake.nix 和 develop/agent-skills.nix),
+  # 故意不跟这里共用一份源码:那样每次 skills 刷新都可能把一次例行 nix flake update 变成
+  # vendorHash 构建失败。但那个 input 钉的是和这里同一个 tag —— skill 文本按同版本 CLI 的
+  # 行为写,版本漂开就会撞上不兼容(细节见 flake.nix 里 lark-skills 的注释),所以改这里的
+  # version 时同步改那边的 tag。
   lark-cli = pkgs.lark-cli.overrideAttrs (
     finalAttrs: _old: {
-      version = "1.0.92";
+      version = "1.0.95";
 
       src = pkgs.fetchFromGitHub {
         owner = "larksuite";
         repo = "cli";
         tag = "v${finalAttrs.version}";
-        hash = "sha256-5cGIgqn28AFXXLrunqsyw5mNfqIBI/TSk5sBx+uTcvs=";
+        hash = "sha256-aTRJE8h+5BHxRUOdCrBr29URFniasQ9NgfM/L5G0ybg=";
       };
 
-      vendorHash = "sha256-WClES7ilNmQ0018Qf13tNHouE/SIwh99MaewZ7VGQ2E=";
+      vendorHash = "sha256-DdDx//DYulqko26afCBoaT/dhUhikXpDkleh6TuOazI=";
 
       metaDataRelease = pkgs.fetchurl {
         name = "lark-cli-${finalAttrs.version}-linux-amd64.tar.gz";
         url = "https://github.com/larksuite/cli/releases/download/v${finalAttrs.version}/lark-cli-${finalAttrs.version}-linux-amd64.tar.gz";
-        hash = "sha256-7w4ZeZwe3ZTrUtO7XVh+ANCiiY4KS0B6G43GbVYYHvE=";
+        hash = "sha256-faktQmt9AAkIx2o2uHp9A1fCcN6/THFJu8YBCyDSVB4=";
       };
     }
   );
@@ -152,6 +154,7 @@ in
     ./user-secrets.nix
     ./apps.nix
     ./mail.nix
+    ./netloc.nix
     ./develop/vscode.nix
     ./develop/claude-code.nix
     ./develop/cc-connect.nix
@@ -245,6 +248,16 @@ in
     mpv
 
     resvg # SVG -> PNG/PDF 光栅化,画架构图时把 SVG 渲出来自查
+
+    # PDF 工具链。按交互范式分层,彼此不重叠(环境事实写在
+    # develop/skills/local-pdf-env,给 Claude Code 及其子代理看)。
+    # okular 故意不在这里:它随 services.desktopManager.plasma6 进系统 profile,
+    # 再加 kdePackages.okular 会装第二份。
+    qpdf # 页面拆合、加解密、--check 诊断结构;页面内容按字节无损搬运
+    poppler-utils # pdftotext/pdftoppm/pdfimages/pdfinfo,把内容取出来变成文本或图片
+    mupdf-headless # 只提供 mutool。qpdf 报读不进来时的救援工具(对坏 xref 容忍度更高)
+    pdfarranger # GUI:缩略图里拖拽删页、调序、旋转、拼接
+    xournalpp # GUI:手写笔迹和签名,导出时把笔迹压平进 PDF
 
     ory
     lark-cli
