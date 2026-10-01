@@ -29,6 +29,14 @@
       filter.maxDepth = 1;
     };
 
+    # tare:用量诊断(为什么撞限额、token 花在哪)。脚本只读 ~/.claude/projects,
+    # 产出写到 /tmp 或 cwd,store 只读不影响。
+    sources.tare = {
+      input = "tare";
+      subdir = "skills";
+      filter.maxDepth = 1;
+    };
+
     # 本仓库自带的 skill(sourceType 支持 path 作为 input 的替代,见模块 modules/common.nix)。
     # 只放"本机环境事实"这类上游不可能知道的内容:这台机器上某类活儿装了哪些工具、
     # 它们的行为差异和坑、哪些操作在无图形会话里做不了(目前:画图工具链、PDF 工具链)。
@@ -53,6 +61,10 @@
       # 金字塔、柱状/折线图、treemap 等,routes/ 支持 mermaid 和 svg 输入。
       # lark-doc 的画板工作流直接引用它的 reference,是硬依赖。
       "lark-whiteboard"
+      # 飞书幻灯片:建 deck、按页增删读改(XML)、截图、pptx 模板导入。
+      # 只硬依赖 lark-shared;模板导入用的 `lark-cli drive +import` 它自己写全了命令,
+      # 明说不必加载 lark-drive。自带的 xml_lint 等脚本只用 python3 标准库。
+      "lark-slides"
       # 所有 lark-* skill 的底座(认证、user/bot 身份、权限、JSON 输出契约)。
       # lark-doc 的 metadata.requires.skills 明确列了它,每个 skill 开头也都写着
       # "MUST 先读 ../lark-shared/SKILL.md"——不装的话上面两个都跑不起来。
@@ -65,11 +77,26 @@
       # 它不是飞书官方 skill,别让人误以为是上游文件的一部分。
       "local-diagram-env"
 
+      # 本机浏览器环境事实(见上方 sources.local):只有一个 chrome MCP server、
+      # 它连的是专用 profile 的 chromium(登录态持久)、用前 systemctl start 用完 stop,
+      # 以及"不要去 chrome://inspect 勾开关"这类止损条目。
+      # 浏览器操作常被委派给 SubAgent,而子代理读不到对话和 memory —— 正是 skill 的用武之地。
+      "local-browser-env"
+
       # 本机 PDF 环境事实(见上方 sources.local):五段工具各管什么、能直接抄的命令、
-      # 三个 GUI 在子代理/cc-connect 里不能调、okular 批注默认不入 PDF 的坑,
+      # 三个 GUI 在子代理里不能调、okular 批注默认不入 PDF 的坑,
       # 以及"不要装 masterpdfeditor / stirling-pdf / pip 装 pdf 库"这类止损条目。
       "local-pdf-env"
     ];
+
+    # 用量诊断(见上方 sources.tare),/tare 或直接问"为什么撞限额"。
+    # 走 explicit 而不是上面的白名单,为的是 agents 只给 claude:它分析的是 ~/.claude 下
+    # Claude Code 自己的用量,对 pi 没意义;而且 description 1261 字符超出 Agent Skills
+    # 规范的 1024 上限,pi 启动时会报 [Skill conflicts](Claude Code 不校验这条)。
+    skills.explicit.tare = {
+      from = "tare";
+      agents = [ "claude" ];
+    };
 
     targets.claude = {
       enable = true;
@@ -81,6 +108,14 @@
       # link 模式要求静态路径。默认值 "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills" 会走模块里
       # 一段正则回退提取 fallback 并打 trace,这里直接写死(我们没用 CLAUDE_CONFIG_DIR)。
       dest = ".claude/skills";
+    };
+
+    # pi 也吃同一份白名单,个别只给 claude 的用 explicit 的 agents 排除(如 tare)。理由同上用 link;
+    # dest 是 pi 的用户级 skills 目录,pi 不扫 ~/.claude/skills,所以得单独装一份。
+    targets.pi = {
+      enable = true;
+      structure = "link";
+      dest = ".pi/agent/skills";
     };
   };
 }

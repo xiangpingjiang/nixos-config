@@ -19,7 +19,7 @@ If both changed, run both.
 Outbound rules all route through one selector, `OUT`, and `claude` has its own.
 `netloc` flips both and then verifies what actually happened:
 
-    netloc cn          # back in China: outbound via the airport, Claude on a JP node
+    netloc cn          # back in China: outbound via the airport, Claude on a 0.3X node
     netloc sg          # in Singapore: everything direct
     netloc             # status only, changes nothing
     netloc cn --quick  # skip the node health check (that step takes 1-2 min)
@@ -35,6 +35,12 @@ and that `claude` is not sitting on the wrong side.
 
 `profile.store-selected` makes both choices survive a restart, so this is a
 once-per-trip action, not a per-boot one.
+
+Both `MESL` and the proxy tier of `claude` are `fallback` groups that prefer the
+0.3X low-rate nodes and drop to the full-rate ones only when those are unreachable.
+That bills at 30% and — counter-intuitively — lands on cleaner exits: the Taiwan and
+Japan 0.3X nodes report `proxy=false`, while the full-rate pool often sits on a
+`proxy=true hosting=true` range. CLAUDE.md has the measurements.
 
 If `netloc` is not on PATH yet (fresh checkout, no `home-manager switch`), the two
 switches by hand:

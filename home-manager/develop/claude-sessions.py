@@ -30,6 +30,10 @@ PROJECTS = os.path.expanduser("~/.claude/projects")
 SESSIONS = os.path.expanduser("~/.claude/sessions")
 # 标题缓存在 tmpfs 上,重启即失。aiTitle 一旦生成基本不变,不缓存就得每轮全文扫每个 jsonl
 CACHE = os.path.join(os.environ.get("XDG_RUNTIME_DIR") or "/tmp", "cc-sessions")
+# 后台子代理的运行标记,由 Claude Code 的 Stop hook 写(claude-code.nix)。
+# 主 agent 派完后台子代理就 end_turn 了,transcript 里再无痕迹,只有 hook 输入里的
+# background_tasks 知道它还在跑 —— 所以这个目录是"子代理运行中"唯一的信息来源。
+BG = os.path.join(CACHE, "bg")
 
 DIM = "\033[2m"
 BOLD = "\033[1m"
@@ -357,11 +361,34 @@ def state_of(path):
             # 和新输入落在同一条 user 消息里(`[Request interrupted by user] 还在干活吗`),
             # 那种是真的在跑,用子串/前缀匹配就会把它误判成等你回话。
             if INTERRUPT_MARKER.match(user_text(d)):
-                return "waiting", mtime
+                # 和 end_turn 的 waiting 分开:打断那一轮已经结束,不会再有 Stop hook
+                # 来清后台子代理标记,所以这种 waiting 一律不认标记(调用方归并回 waiting)
+                return "interrupted", mtime
             return "running", mtime
     except OSError:
         pass
     return None, mtime
+
+
+def bg_active(sid, proc_start):
+    """该会话有没有正在跑的后台子代理;有就返回标记的写入时间。
+
+    只看文件在不在 + 够不够新,不解析内容:Stop hook 每次都整份重写,漏删一次下一次
+    就纠正,文件的存在性本身已经是权威快照。
+
+    两条陈旧兜底(都不用解析):
+    - 文件比进程还老 = 上一条命的残留。kill -9 走不到 SessionEnd,而 resume 沿用
+      同一个 sessionId,只能按时间分辨;新进程自己那轮的 Stop 必定晚于启动,不会误杀。
+    - 打断(state_of 返回 interrupted)由调用方挡掉,那一轮不会再有 Stop 来清文件。
+    不另设超时:后台子代理跑几十分钟是常事,按时长砍反而会在长任务上误报成"等你回话"。
+    """
+    if not sid:
+        return None
+    try:
+        st = os.stat(os.path.join(BG, sid + ".json"))
+    except OSError:
+        return None
+    return st.st_mtime if st.st_mtime >= proc_start else None
 
 
 def age(secs):
@@ -415,6 +442,12 @@ def mark_of(p, now):
     """返回(带色, 纯文本)两份:前者拿去打印,后者拿去算宽度。"""
     if p["state"] == "running":
         return GREEN + "●" + OFF + " 运行中", "● 运行中"
+    if p["state"] == "subagent":
+        # 主 agent 这一轮确实停了,但子代理结束会把它唤醒接着干 —— 算 Claude 在跑。
+        # 单列一个字样而不是并进"运行中":两者要等的东西不一样,值得一眼分得开
+        ran = age(now - p["bg_since"]) if p["bg_since"] else ""
+        text = "● 子代理" + ((" " + ran) if ran else "")
+        return GREEN + "●" + OFF + text[1:], text
     if p["state"] == "waiting":
         waited = age(now - p["mtime"]) if p["mtime"] else ""
         text = "○ 等你回话" + ((" " + waited) if waited else "")
@@ -444,7 +477,7 @@ def main():
 
     for p in procs_all:
         p["title"] = p["state"] = None
-        p["mtime"] = None
+        p["mtime"] = p["bg_since"] = None
         p["talked"] = False
         if not p["sid"]:
             continue
@@ -459,6 +492,13 @@ def main():
         # transcript 读不出状态时,cli 会话还能退回边车里的 status(vscode 那些没有这个字段)
         if p["state"] is None:
             p["state"] = {"busy": "running", "waiting": "waiting"}.get(p["car_status"])
+        # 看着像"等你回话",但 hook 说还有后台子代理在跑 —— 以 hook 为准
+        if p["state"] == "waiting":
+            p["bg_since"] = bg_active(p["sid"], p["start"])
+            if p["bg_since"]:
+                p["state"] = "subagent"
+        elif p["state"] == "interrupted":
+            p["state"] = "waiting"
 
     groups = {}
     for p in procs_all:

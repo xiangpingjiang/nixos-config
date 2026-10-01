@@ -13,16 +13,6 @@
   # tmpfs,重启即失),由 sops-nix.service 在登录/激活时写入。
   sops.age.sshKeyPaths = [ "/home/xpj/.ssh/id_ed25519" ];
 
-  # cc-connect 的飞书自建应用凭证,见 develop/cc-connect.nix
-  sops.secrets.cc_feishu_app_id = {
-    sopsFile = ../secrets/cc-connect.enc.yaml;
-    key = "feishu_app_id";
-  };
-  sops.secrets.cc_feishu_app_secret = {
-    sopsFile = ../secrets/cc-connect.enc.yaml;
-    key = "feishu_app_secret";
-  };
-
   # QQ 邮箱的 IMAP/SMTP 授权码(不是 QQ 密码),给 himalaya 用,见 mail.nix。
   # 改这个值要 `sops secrets/qq-mail.enc.yaml` 之后重新 switch:
   # .enc.yaml 是在 eval 期被复制进 store 的,不 switch 只 restart sops-nix 拿不到新值。
@@ -36,5 +26,11 @@
   sops.secrets.deepseek_api_key = {
     sopsFile = ../secrets/llm-keys.enc.yaml;
     key = "deepseek_api_key";
+  };
+
+  # OpenRouter 的 key,给 pi 用免费模型(:free),见 develop/pi.nix。
+  sops.secrets.openrouter_api_key = {
+    sopsFile = ../secrets/llm-keys.enc.yaml;
+    key = "openrouter_api_key";
   };
 }

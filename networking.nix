@@ -36,13 +36,10 @@
     };
     firewall = {
       # localsend use 53317
-      allowedTCPPorts = [
-        53317
-        # Mihomo / Clash
-        7890 # HTTP
-        7891 # SOCKS5
-        7897 # Mixed
-      ];
+      # mihomo 的 7890/7891/7897 不放行:配置是 allow-lan: false、只绑 127.0.0.1,
+      # 放行是死配置;哪天打开 allow-lan,同一 LAN 的人就能无认证地拿它当代理
+      # (出境、公司 10.x 内网都通)。
+      allowedTCPPorts = [ 53317 ];
       allowedUDPPorts = [ 53317 ];
       # enable = false;
       trustedInterfaces = [

@@ -8,6 +8,14 @@
 # 这样一次输出就能看清是哪一环坏的 —— 半路 exit 会让人少看到后面的线索。
 
 API=${MIHOMO_API:-http://127.0.0.1:9097}
+
+# 控制接口设了 secret（挡本机浏览器里的 JS —— CORS 是 Allow-Origin: * 且允许 PUT，
+# 恶意页面能把 claude 切成 DIRECT 或关掉 tun）。密钥由 sops-nix 从 mihomo 配置里
+# 单独解出来，声明在 system-secrets.nix；环境变量优先，方便临时覆盖。
+MIHOMO_SECRET_FILE=${MIHOMO_SECRET_FILE:-/run/secrets/mihomo_secret}
+if [ -z "${MIHOMO_SECRET:-}" ] && [ -r "$MIHOMO_SECRET_FILE" ]; then
+  MIHOMO_SECRET=$(cat "$MIHOMO_SECRET_FILE")
+fi
 CURL_AUTH=()
 if [ -n "${MIHOMO_SECRET:-}" ]; then
   CURL_AUTH=(-H "Authorization: Bearer ${MIHOMO_SECRET}")
@@ -34,7 +42,7 @@ usage() {
   cat <<'EOF'
 用法: netloc [cn|sg|status] [--quick] [--fix-tun]
 
-  cn        切到回国配置:出境走机场,Claude 走日本节点
+  cn        切到回国配置:出境走机场(低倍率优先),Claude 走 claude_cn
   sg        切到新加坡配置:全部直连(本地网络已无限制时都用这个)
   status    只看当前状态,不做改动(默认)
 
@@ -70,7 +78,10 @@ preflight() {
   if ! api_alive; then
     bad "控制接口不可达:$API"
     hint "确认 external-controller 的地址/端口,或用 MIHOMO_API 指定"
-    hint "设了 secret 的话用 MIHOMO_SECRET 传"
+    if [ -z "${MIHOMO_SECRET:-}" ]; then
+      hint "没读到 secret($MIHOMO_SECRET_FILE 不存在或不可读)——控制接口设了 secret 时会 401"
+      hint "sops-nix 没解出来的话先 sudo nixos-rebuild switch --flake . -vv"
+    fi
     return 1
   fi
   ok "控制接口可达 $API"
@@ -94,7 +105,10 @@ switch_group() {
   local group=$1 target=$2 code now
   code=$(curl -sS -m 8 -o /dev/null -w '%{http_code}' \
     -X PUT -H 'Content-Type: application/json' "${CURL_AUTH[@]}" \
-    -d "{\"name\":\"${target}\"}" "$API/proxies/${group}" 2>/dev/null || echo 000)
+    -d "{\"name\":\"${target}\"}" "$API/proxies/${group}" 2>/dev/null)
+  # 连接失败时 curl 自己就输出 000,不能再 `|| echo 000`(会拼成 000000,
+  # 所有 000) 分支都走不到);这里只兜 curl 根本没输出的情况
+  code=${code:-000}
 
   case "$code" in
   204 | 200) ;;
@@ -138,7 +152,8 @@ enable_tun() {
   local code i
   code=$(curl -sS -m 8 -o /dev/null -w '%{http_code}' \
     -X PATCH -H 'Content-Type: application/json' "${CURL_AUTH[@]}" \
-    -d '{"tun":{"enable":true}}' "$API/configs" 2>/dev/null || echo 000)
+    -d '{"tun":{"enable":true}}' "$API/configs" 2>/dev/null)
+  code=${code:-000}
   if [ "$code" != "204" ] && [ "$code" != "200" ]; then
     bad "开启 tun 失败(HTTP $code)"
     hint "mihomo 需要 CAP_NET_ADMIN 才能建 tun 设备。services.nix 里 tunMode 应为 true"
@@ -199,7 +214,8 @@ healthcheck() {
     # 重定向到文件时直接跳过,免得 \r 和转义序列进日志
     [ -t 1 ] && printf '    %s…%s %s ' "$C_D" "$C_N" "$p"
     code=$(curl -sS -m 300 -o /dev/null -w '%{http_code}' \
-      "${CURL_AUTH[@]}" "$API/providers/proxies/${p}/healthcheck" 2>/dev/null || echo 000)
+      "${CURL_AUTH[@]}" "$API/providers/proxies/${p}/healthcheck" 2>/dev/null)
+    code=${code:-000}
     [ -t 1 ] && printf '\r\033[K'
     if [ "$code" != "204" ] && [ "$code" != "200" ]; then
       bad "$p 健康检查失败(HTTP $code)"
@@ -212,6 +228,21 @@ healthcheck() {
           | [length, ([.[] | select(.alive and ((.history | length) > 0) and (.history[-1].delay > 0))] | length)]
           | @tsv'
     )
+    # 订阅新鲜度:MESL 要在控制台点一次授权、十分钟内才让拉,所以 interval 那条
+    # 每小时只是白撞 403,节点列表实际是手动更新的。冻结本身不会立刻断网(已有节点照常连),
+    # 但机场换一批节点地址就静默死一批 —— 2026-09-12 冻了 45 小时没人发现,所以这里报一声。
+    local upd age
+    upd=$(curl -fsS -m 10 "${CURL_AUTH[@]}" "$API/providers/proxies" 2>/dev/null |
+      jq -r --arg p "$p" '.providers[$p].updatedAt // empty')
+    if [ -n "$upd" ]; then
+      age=$(($(date +%s) - $(date -d "$upd" +%s 2>/dev/null || date +%s)))
+      if [ "$age" -gt 86400 ]; then
+        warn "$p 节点列表 $((age / 3600))h 没更新了"
+        hint "机场控制台点授权 → 十分钟内手动拉一次(不支持自动):"
+        hint "curl -X PUT $API/providers/proxies/$p"
+      fi
+    fi
+
     if [ "${alive:-0}" -eq 0 ]; then
       bad "$p:$total 个节点全部不可用"
       hint "从当前网络到机场入口不通。换网络(热点/WiFi)再试,仍然全灭就是机场故障"
@@ -236,7 +267,8 @@ selftest() {
   sg) url=https://polymarket.com/ name="polymarket(验证 DNS 未被 sinkhole)" ;;
   esac
 
-  code=$(curl -sS -m 20 --noproxy '*' -o /dev/null -w '%{http_code}' "$url" 2>/dev/null || echo 000)
+  code=$(curl -sS -m 20 --noproxy '*' -o /dev/null -w '%{http_code}' "$url" 2>/dev/null)
+  code=${code:-000}
   case "$code" in
   200 | 204)
     ok "$name -> HTTP $code"
@@ -266,12 +298,12 @@ claude_guard() {
   now=$(group_now claude)
   case "$loc" in
   cn)
-    if [ "$now" = DIRECT ]; then
-      bad "claude 组停在 DIRECT —— 在国内这是中国 IP"
-      hint "中国大陆不在 Anthropic 支持地区。开会话前必须切走:"
-      hint "netloc cn        # 或手动 PUT claude = MESL_Claude"
+    if [ "$now" != claude_cn ]; then
+      bad "claude 组停在 '$now',国内唯一安全的选择是 claude_cn"
+      hint "中国大陆不在 Anthropic 支持地区,DIRECT 就是中国 IP。开会话前必须切走:"
+      hint "netloc cn        # 或手动 PUT claude = claude_cn"
     else
-      ok "claude = $now(非直连)"
+      ok "claude = claude_cn(机场层,不会回落到直连)"
       hint "Claude 会话开始前再核对一次:netloc status"
     fi
     ;;
@@ -287,19 +319,39 @@ claude_guard() {
   esac
 }
 
-# 只报两个 selector 的选择;tun 由 check_tun 单独报(它在未启用时还要给排查提示)
+# 顶层选择器说明不了问题:OUT -> MESL 只是第一跳,MESL 自己是 fallback,
+# 底下还有 MESL_low / MESL_no_low 两层,到底走没走 0.3X 得一路展开才看得见。
+# 顺着 now 往下走到叶子节点(非组的 now 为空,DIRECT/REJECT 也没有下一跳)。
+resolve_chain() {
+  local cur=$1 out="" nxt i
+  for i in 1 2 3 4; do
+    case "$cur" in DIRECT | REJECT | PASS | "") break ;; esac
+    nxt=$(group_now "$cur")
+    [ -z "$nxt" ] && break
+    out="${out:+$out → }$nxt"
+    cur=$nxt
+  done
+  printf '%s' "${out:-?}"
+}
+
+# 两条链路各自展开;tun 由 check_tun 单独报(它在未启用时还要给排查提示)
 show_status() {
-  local out claude
+  local out
   out=$(group_now OUT)
-  claude=$(group_now claude)
 
   step "当前状态"
-  printf '      OUT    = %s\n' "${out:-?}"
-  printf '      claude = %s\n' "${claude:-?}"
+  printf '      OUT    = %s\n' "$(resolve_chain OUT)"
+  printf '      claude = %s\n' "$(resolve_chain claude)"
 
+  # 说清楚三类流量各走哪儿,别只丢一句"出境经机场"——那是圈内黑话,
+  # 而且看不出国内站点和公司内网其实不受影响
   case "$out" in
-  DIRECT) hint "地点:新加坡 / 本地网络无限制" ;;
-  MESL) hint "地点:国内(出境经机场)" ;;
+  DIRECT)
+    hint "地点:新加坡 —— 全部直连(本地网络无限制,靠 mihomo 接管 DNS 绕开 sinkhole)"
+    ;;
+  MESL)
+    hint "地点:国内 —— 被墙站点走机场节点,国内站点直连,公司内网走 RFvpn"
+    ;;
   esac
 }
 
@@ -344,7 +396,11 @@ case "$action" in
 cn)
   step "切到回国配置"
   switch_group OUT MESL || true
-  switch_group claude MESL_Claude || true
+  # MESL 内部也要显式切到低倍率:fallback 只在「当前选择失效」时才换人,
+  # 不会因为排在前面的更优先就主动切回去。store-selected 记着 MESL_no_low 的话,
+  # 只要它还活着,0.3X 那层永远轮不上 —— 必须 PUT 一次。
+  switch_group MESL MESL_low || true
+  switch_group claude claude_cn || true
   check_tun
   [ "$quick" -eq 0 ] && healthcheck
   selftest cn

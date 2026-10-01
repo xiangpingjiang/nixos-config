@@ -7,15 +7,6 @@
 
 let
 
-  maestro-studio = pkgs.appimageTools.wrapType2 {
-    pname = "maestro-studio";
-    version = "latest";
-    src = pkgs.fetchurl {
-      url = "https://studio.maestro.dev/MaestroStudio.AppImage";
-      sha256 = "sha256-/peSlEt6+OoESVReTL+refh1hyagfkLhzbA0hMZwrPg=";
-    };
-  };
-
   # dbx-cli 用 dbx 自带的那棵 nixpkgs 构建,不用本仓库的 pkgs。
   # 理由:上游 flake 只输出 desktop(Tauri GUI),CLI 在 workspace 的 crates/dbx-cli 里没被打包,
   # 只能自行构建;而这个 derivation 上游 binary cache 里不存在,必然本地编译。如果用本仓库的
@@ -74,7 +65,8 @@ let
   };
 
   # dbx 原名让给 CLI,desktop 这边包一层改名成 dbx-desktop。
-  # 不能 overrideAttrs 上游 derivation:hash 一变 binary cache 全部未命中,Tauri 要本地重编。
+  # 不能 overrideAttrs 上游 derivation:hash 一变已有的本地构建全部作废(上游没有 binary cache),
+  # Tauri 要整个重编。
   # runCommand 只做零成本包装:bin 用 makeWrapper 改名并注入环境变量(见下);desktop entry 的
   # Exec 原本按 PATH 找 dbx,现在会打到 CLI 上,改写成 wrapper 的绝对路径;图标原样链接。
   dbx-desktop-upstream = inputs.dbx.packages.${pkgs.stdenv.hostPlatform.system}.dbx-desktop;
@@ -157,8 +149,9 @@ in
     ./netloc.nix
     ./develop/vscode.nix
     ./develop/claude-code.nix
-    ./develop/cc-connect.nix
+    ./develop/chrome-devtools-mcp.nix
     ./develop/codex.nix
+    ./develop/pi.nix
     ./develop/agent-skills.nix
 
     ./develop/shell.nix
@@ -196,7 +189,6 @@ in
     direnv
     dig
 
-    maestro-studio
     maestro
     # mitmproxy
     openssl
@@ -238,7 +230,6 @@ in
 
     dbx-desktop # 上游 GUI 的改名 wrapper(见上方 let),二进制名 dbx-desktop
     dbx-cli # 自打包的 CLI(见上方 let),占用原名 dbx,供官方 skill 直接调用
-    dbeaver-bin
     jq
     uv
     sops
@@ -263,10 +254,4 @@ in
     lark-cli
 
   ];
-  xdg.desktopEntries.maestro-studio = {
-    name = "Maestro Studio";
-    exec = "${maestro-studio}/bin/maestro-studio";
-    icon = "maestro-studio"; # 可选，没有图标也能显示
-    categories = [ "Development" ];
-  };
 }

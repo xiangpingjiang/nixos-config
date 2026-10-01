@@ -70,8 +70,8 @@ mutool 另有 `draw` / `convert` / `merge` / `extract` / `show` / `grep` / `sign
 
 ## 三个 GUI 需要图形会话
 
-`okular` / `xournalpp` / `pdfarranger` 都要 Wayland/X 会话。**在子代理、`cc-connect`
-（飞书 bot）这类没有桌面的上下文里不要调用**——会挂住或直接失败。那些场合只用
+`okular` / `xournalpp` / `pdfarranger` 都要 Wayland/X 会话。**在 systemd 服务、定时任务
+这类没有桌面的上下文里不要调用**——会挂住或直接失败。那些场合只用
 `qpdf` / `poppler-utils` / `mutool`。
 
 需要给用户看渲染结果时：`pdftoppm -png` 出图，再用 `Read` 看那张 PNG，不要试图开 GUI。

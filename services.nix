@@ -23,6 +23,10 @@ let
     webdav-backup-nutstore = {
       remote = "kp_nutstore";
       startMinute = 10;
+      # 坚果云有频率封禁,restic 进不去(见 CLAUDE.md「坚果云是坏的」),prune 每次必败。
+      # 留在 prune 列表里的代价是单元永远是红的,cst/infini 真出问题时就被淹没了。
+      # 备份照跑(低频请求不受影响);修好或绕过 restic 清空之后删掉这一行。
+      prune = false;
     };
     webdav-backup-infini = {
       remote = "kp_infini";
@@ -31,6 +35,14 @@ let
   };
 in
 {
+  # 2026-09-20 到 09-30 在新加坡期间关过:那边是纯 DNS sinkhole、IP 层不封,直连就够。
+  # 关掉的起因是 fake-ip 把公司 VPN 自己的传输层打死
+  # (openvpn 把 globalvpn.rockflow.ai 解析成 fake-ip 198.18.0.12,
+  # NetworkManager 按惯例给这个"服务器地址"加一条 /32 绕行路由走物理网卡,
+  # 而 mihomo 的策略路由只 suppress_prefixlength 0、压不住 /32,包直接进黑洞;
+  # 表象是 nmcli 显示 activated 但 10.129/10.130/10.131 全不通)。
+  # 现在两地的 VPN 域名(vpn1 国内 / globalvpn 新加坡)都在 fake-ip-filter 里,
+  # 所以两地都可以开着,切地点用 netloc。换 VPN 服务器域名时必须同步改那里。
   services.mihomo = {
     enable = true;
     tunMode = true;
@@ -38,11 +50,33 @@ in
     configFile = config.sops.secrets.mihomo_config.path;
   };
 
+  # 改了 secrets/mihomo.enc.yaml 之后,光 nixos-rebuild 不会重启 mihomo：
+  # 配置是用 LoadCredential=config.yaml:/run/secrets/mihomo_config 传进去的，
+  # 那是个运行时路径，内容变化完全不体现在 unit 文件里，systemd 于是判定无需重启。
+  # 2026-09-13 踩过一次：系统代都换了(705→706)，mihomo 还跑着 40 小时前的旧配置，
+  # 两代的 mihomo.service diff 为空。
+  # 把加密文件的 store 路径挂进 restartTriggers：内容一变 hash 就变，unit 里的
+  # X-Restart-Triggers 跟着变，systemd 才会重启。
+  # mkIf 包住整个 mihomo 单元:enable = false 时 services.mihomo 模块什么都不定义,
+  # 光留一条 restartTriggers 会凭空生成一个没有 ExecStart 的 mihomo.service。
+  systemd.services.mihomo = lib.mkIf config.services.mihomo.enable {
+    restartTriggers = [
+      config.sops.secrets.mihomo_config.sopsFile
+    ];
+  };
+
   services.restic.backups = lib.mapAttrs (
     _name:
-    { remote, startMinute }:
     {
-      initialize = true;
+      remote,
+      startMinute,
+      ...
+    }:
+    {
+      # 三个仓库都已建好,不要再自动 init:模块的 pre-start 是「读 config 失败就 init」,
+      # 而后端限流时会返回假 404 / 500(9/29、10/01 infini 返回 500 时日志里就是先
+      # unable to open config 再尝试 create repository)。要重建某个仓库时手动 init。
+      initialize = false;
       passwordFile = config.age.secrets.restic_repository.path;
       rcloneConfigFile = "/home/xpj/.config/rclone/rclone.conf";
       extraBackupArgs = [
@@ -53,11 +87,9 @@ in
         # 每次备份都会写一个新的 snapshot 文件 + 一个 index + 若干 tree blob,
         # 哪怕那个 21KB 的 kdbx 一个字节没变——2026-09-06 清理时,三个仓库里
         # 一万多个快照对应的有效数据只有 50 KiB 左右,其余全是这类元数据。
-        # 已知风险:restic 比对的是父快照的完整元数据树,而日志里每次都报
-        # `Dirs: 2 changed`(/home 和 /home/xpj 的 mtime 被别的进程碰过)。
-        # 改完要看一个周期的日志确认打的是 `snapshot skipped` 而不是 `snapshot saved`;
-        # 若仍在 saved,说明父目录的 mtime 抖动破坏了判定,那就改用 ExecCondition
-        # 比对 kdbx 自身的哈希。
+        # 已验证生效(2026-10-01):三个仓库日志都是 `skipped creating snapshot`,
+        # 只有 kdbx 真改过的那次才 `saved`。父目录的 `Dirs: 2 changed` 没有破坏判定。
+        # 哪天又变回每次都 saved,就改用 ExecCondition 比对 kdbx 自身的哈希。
         "--skip-if-unchanged"
       ];
       paths = [ "/home/xpj/Documents/sync/kp/" ];
@@ -70,7 +102,7 @@ in
 
   # 把 forget+prune 从每次备份里剥离，单独按下面的 timer 一周跑两次，
   # 大幅降低独占锁的频率（之前那把 4 个月的死锁就来自跟着每 3 分钟备份跑的 prune）。
-  # 仓库列表自动从上面的 services.restic.backups 派生，增删备份时无需同步修改。
+  # 仓库列表自动从上面的 resticRepos 派生(跳过 prune = false 的)，增删备份时无需同步修改。
   #
   # 但"剥离"本身不清锁：2026-07-25 / 07-28 各有一次 prune 被中断（休眠或关机时
   # systemd 杀掉了服务），留下的 exclusive 锁一直躺在仓库里，此后 08-10 到 09-03
@@ -106,7 +138,9 @@ in
     };
     script =
       let
-        repos = lib.mapAttrsToList (_: b: b.repository) config.services.restic.backups;
+        repos = lib.mapAttrsToList (name: _: config.services.restic.backups.${name}.repository) (
+          lib.filterAttrs (_: r: r.prune or true) resticRepos
+        );
       in
       ''
         rc=0
@@ -241,10 +275,25 @@ in
     wantedBy = [ "multi-user.target" ];
     # 必须等网络:开机时 DNS 还没就绪就 remote-add 会直接失败
     # (Could not resolve hostname dl.flathub.org),单元就一直留在 failed 状态。
-    after = [ "network-online.target" ];
+    after = [
+      "network-online.target"
+      "mihomo.service" # remote-add 要访问被墙的 dl.flathub.org,得等代理起来
+    ];
     wants = [ "network-online.target" ];
     path = [ pkgs.flatpak ];
+    # 配好了就直接退出,别每次 rebuild 都去碰网络。
+    # `remote-add --if-not-exists` 名字有误导:remote 已存在它也会先去拉那个
+    # .flatpakrepo 文件,而 dl.flathub.org 在国内要走代理 —— mihomo 因为
+    # restartTriggers 每次改配置都重启,两者一撞就是 `[35] SSL connect error`,
+    # 单元失败、nixos-rebuild 跟着返回非 0,再跑一次又好了(2026-09-13 连撞 4 次)。
+    # 最终 URL 是中科大镜像,而镜像没有 .flatpakrepo(404),所以只能这样绕:
+    # 首次仍走官方 add,之后靠这个判断跳过。
     script = ''
+      if flatpak remotes --system --columns=name,url 2>/dev/null \
+        | grep -q '^flathub[[:space:]].*mirrors\.ustc\.edu\.cn'; then
+        echo "flathub 已指向中科大镜像,跳过"
+        exit 0
+      fi
       flatpak remote-add --if-not-exists flathub \
         https://dl.flathub.org/repo/flathub.flatpakrepo
       flatpak remote-modify flathub \

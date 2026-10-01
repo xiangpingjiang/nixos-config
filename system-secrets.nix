@@ -13,4 +13,14 @@
     format = "yaml";
     key = "";
   };
+  # 同一份文件里单独再取 secret 这一个 key，给 netloc 读控制接口用。
+  # 这样密钥只有一个来源（mihomo 配置本身），不需要两处同步。
+  # mihomo 服务跑在 DynamicUser 下、通过 LoadCredential 拿整份配置，与这条互不影响。
+  sops.secrets.mihomo_secret = {
+    sopsFile = ./secrets/mihomo.enc.yaml;
+    format = "yaml";
+    key = "secret";
+    mode = "0400";
+    owner = "xpj";
+  };
 }

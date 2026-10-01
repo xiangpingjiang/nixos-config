@@ -27,7 +27,45 @@ let
     ];
     text = builtins.readFile ./netloc.sh;
   };
+
+  # tun 掉线的观测。根因未明(两次都没有关闭日志),先把"什么时候掉的、掉了多久"
+  # 记下来再谈修 —— 和 netloc 的 --fix-tun 是显式开关同一个立场。只在状态翻转时
+  # 写一条 journal,不是每分钟刷屏。
+  tunWatch = pkgs.writeShellApplication {
+    name = "tun-watch";
+    runtimeInputs = with pkgs; [
+      iproute2
+      procps # pgrep
+      util-linux # logger
+      coreutils
+    ];
+    bashOptions = [
+      "nounset"
+      "pipefail"
+    ];
+    text = builtins.readFile ./tun-watch.sh;
+  };
 in
 {
-  home.packages = [ netloc ];
+  home.packages = [
+    netloc
+    tunWatch
+  ];
+
+  systemd.user.services.tun-watch = {
+    Unit.Description = "记录 Mihomo tun 网卡的消失与恢复";
+    Service = {
+      Type = "oneshot";
+      ExecStart = "${tunWatch}/bin/tun-watch";
+    };
+  };
+
+  systemd.user.timers.tun-watch = {
+    Unit.Description = "每分钟检查一次 Mihomo tun 网卡";
+    Timer = {
+      OnBootSec = "2min";
+      OnUnitActiveSec = "1min";
+    };
+    Install.WantedBy = [ "timers.target" ];
+  };
 }

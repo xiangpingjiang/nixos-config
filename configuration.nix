@@ -43,8 +43,6 @@ in
       "https://cache.numtide.com"
 
       "https://nix-community.cachix.org"
-      # binary cache for cachix/nixpkgs-python
-      "https://nixpkgs-python.cachix.org"
       # 优先使用国内镜像
 
       # "https://mirrors.cernet.edu.cn/nix-channels/store"
@@ -57,7 +55,6 @@ in
     trusted-public-keys = [
       "niks3.numtide.com-1:DTx8wZduET09hRmMtKdQDxNNthLQETkc/yaX7M4qK0g="
       "nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs="
-      "nixpkgs-python.cachix.org-1:hxjI7pFxTyuTHn2NkvWCrAUcNZLNS3ZAvfYNuYifcEU="
     ];
     trusted-users = [
       "root"
@@ -98,11 +95,21 @@ in
   # 它不减少内存需求本身,只是让换页快一个量级。
   zramSwap.enable = true;
 
+  # memoryPercent 默认 50。2026-09-18 实测压缩比 3.42(zram 里 11.5G 数据只占 3.4G 物理内存),
+  # 默认值下 13.5G 的 zram 早就写满、溢出到 nvme 上那个 swap 分区又用掉 8.4G,
+  # io PSI 的 full avg300 到了 49——近一半时间全系统卡在换页 IO 上。调到 100 让更多页
+  # 留在 zram 而不落盘。注意这只让抖动变轻,补不上工作集本身超出物理内存的那部分
+  # (那次是 ~35G 工作集塞进 27G 机器,真正的解法是关掉闲置的 chromium 标签页/VS Code 窗口)。
+  zramSwap.memoryPercent = 100;
+
   # Use latest kernel.
   boot.kernelPackages = pkgs.linuxPackages_latest; # 取决于 flake.lock 锁定的 nixpkgs 版本 和 https://search.nixos.org/packages?channel=unstable 无关
 
   # Set your time zone.
-  time.timeZone = "Asia/Shanghai";
+  # 用新加坡而不是上海：同为 UTC+8,时间完全一样，但浏览器会把时区名原样暴露给网页脚本
+  # (Intl...timeZone),claude.ai 里的 hCaptcha / Datadog / Stripe 都读得到,"Asia/Shanghai"
+  # 等于直接报"在中国"(2026-10-01 实测)。新加坡是常驻地，也在 Anthropic 支持地区。
+  time.timeZone = "Asia/Singapore";
 
   # Select internationalisation properties.
   i18n.defaultLocale = "en_HK.UTF-8";

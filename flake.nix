@@ -13,8 +13,6 @@
     agenix = {
       url = "github:ryantm/agenix/main";
       inputs.nixpkgs.follows = "nixpkgs";
-      inputs.home-manager.follows = "home-manager";
-      inputs.darwin.follows = "";
     };
     sops-nix = {
       url = "github:Mic92/sops-nix";
@@ -40,7 +38,6 @@
     agent-skills = {
       url = "github:Kyure-A/agent-skills-nix";
       inputs.nixpkgs.follows = "nixpkgs";
-      inputs.home-manager.follows = "home-manager";
     };
 
     # 飞书官方 CLI 仓库,这里只取它的 skills/ 目录(agent-skills 的 source 会把 root
@@ -60,6 +57,14 @@
     # 升级手续:改这里的 tag,同时改 home-manager/home.nix 里 lark-cli 的 version(同一个版本号)。
     lark-skills = {
       url = "github:larksuite/cli/v1.0.95";
+      flake = false;
+    };
+
+    # tare:让 Claude Code 读自己的 transcript 诊断用量去向(一个 skill + 三个纯标准库 python 脚本,
+    # 不联网)。只取 skills/tare/,装法见 agent-skills.nix。跟随 main:没有编译,也没有配套 CLI
+    # 会和 skill 文本版本错位(lark-skills 要钉 tag 的理由在这里不成立)。
+    tare = {
+      url = "github:kelviq/tare";
       flake = false;
     };
 
