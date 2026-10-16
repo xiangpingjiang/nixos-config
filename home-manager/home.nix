@@ -7,82 +7,102 @@
 
 let
 
-  # dbx-cli 用 dbx 自带的那棵 nixpkgs 构建,不用本仓库的 pkgs。
-  # 理由:上游 flake 只输出 desktop(Tauri GUI),CLI 在 workspace 的 crates/dbx-cli 里没被打包,
-  # 只能自行构建;而这个 derivation 上游 binary cache 里不存在,必然本地编译。如果用本仓库的
-  # pkgs.rustPlatform,rustc/stdenv 随 nixpkgs 一动 derivation hash 就变——哪怕 dbx 的 rev
-  # 钉死、版本号一个字没改,一次例行 nix flake update 也要赔上十几二十分钟重编。
-  # 换成 dbx 自己的 nixpkgs 后,不变量变成:只有 dbx 这个 input(及其整棵子输入树)变化才重编,
-  # 外层 nixpkgs 怎么更新都免疫,跟 dbx-desktop 的行为对齐。
-  # 代价:CLI 链到的是 dbx 那棵 nixpkgs 的 glibc/openssl(比外层滞后),安全更新跟着 dbx 升级走;
-  # desktop 本来就是这个状况,这里只是让 CLI 与它一致。
-  dbxPkgs = import inputs.dbx.inputs.nixpkgs {
-    inherit (pkgs.stdenv.hostPlatform) system;
-  };
-  dbx-cli = dbxPkgs.rustPlatform.buildRustPackage {
+  # dbx 的 CLI 和 desktop 都直接吃上游 GitHub Release 的预编译二进制,不再从源码编译。
+  # 上游 flake 没有 binary cache、也不打包 CLI,源码构建 = 每次升级本地编 Rust + Tauri,
+  # 结果钉着一个两个月前的 rev 不敢动。release 产物 drv 里只有解包 + patchelf,升级是秒级。
+  # 两条 release 线各自独立:CLI 在 packages-v* tag,desktop 在 v* tag,版本号不同步,各钉各的。
+  # 升级:改版本号,跑下面的 prefetch 换 hash;CLI 升级时同步改 flake.nix 里 dbx input 的 tag(skill 源码)。
+  #   nix store prefetch-file https://github.com/t8y2/dbx/releases/download/packages-v<版本>/dbx-cli-linux-x64-gnu.tar.gz
+  #   nix store prefetch-file https://github.com/t8y2/dbx/releases/download/v<版本>/DBX_<版本>_amd64.deb
+  # 查最新:gh release list -R t8y2/dbx --exclude-pre-releases | grep -E 'packages-v|^v'
+  dbxCliVersion = "0.4.115";
+  # desktop 钉在 0.6.38:0.6.39 起 Linux 主窗口加了 "transparent": true(src-tauri/tauri.linux.conf.json,
+  # 上游 commit 786ccad),KDE Wayland 下一交互就整窗狂闪。上游已在 6cd2dc1 改成默认不透明
+  # (DBX_LINUX_FLOATING_FRAME=1 才开),但 v0.6.40 之后才提交、还没进 release。
+  # 升级前核对:新 tag 里 tauri.linux.conf.json 的 transparent 不再是 true,或该 commit 已包含在内:
+  #   gh api repos/t8y2/dbx/compare/6cd2dc1c9...v<版本> --jq .status   # ahead/identical 才行
+  dbxDesktopVersion = "0.6.38";
+
+  # CLI 只依赖 glibc(openssl/fontconfig 都静态链进去了),autoPatchelfHook 改个 interpreter 就行。
+  # 二进制保持原名 dbx:官方 skill(skills/dbx/SKILL.md)里的命令都是 `dbx ...`,
+  # 名字冲突由 desktop 侧让位解决(见下方 dbx-desktop)。
+  dbx-cli = pkgs.stdenvNoCC.mkDerivation {
     pname = "dbx-cli";
-    version =
-      (builtins.fromTOML (builtins.readFile "${inputs.dbx}/crates/dbx-cli/Cargo.toml")).package.version;
-    src = inputs.dbx;
-    cargoLock = {
-      lockFile = "${inputs.dbx}/Cargo.lock";
-      # lockfile 里的 3 个 git 依赖(t8y2 的 fork)。显式给 hash 走 fetchgit 按 rev 拉,
-      # 不依赖 allowBuiltinFetchGit(历史上 tokio-postgres-gaussdb 按 branch 锁定时 fetchGit
-      # 找不到 commit,现在上游虽已改为 rev 锁定,保持 hash 方式更稳)。
-      # dbx 更新换了 rev 后需要重新 nix-prefetch-git(hash 和版本号都可能变)。
-      outputHashes = {
-        "mysql-common-derive-0.32.2" = "sha256-fw1rDLNh0BByLHjS8Cgc7KQxdj3N51HVMHXvRyETsas=";
-        "mysql_async-0.37.0" = "sha256-zIMZitF9fU6wkeuGAv4LJv80bCWbvmUkgQ1/G5MjDv8=";
-        "mysql_common-0.38.0" = "sha256-fw1rDLNh0BByLHjS8Cgc7KQxdj3N51HVMHXvRyETsas=";
-        "postgres-protocol-0.6.12" = "sha256-ybf+2siiLokb2iylFEhmLAFCFmbjSKF+zNdH93LggkM=";
-        "postgres-types-0.2.14" = "sha256-ybf+2siiLokb2iylFEhmLAFCFmbjSKF+zNdH93LggkM=";
-        "tokio-postgres-0.7.18" = "sha256-ybf+2siiLokb2iylFEhmLAFCFmbjSKF+zNdH93LggkM=";
-      };
+    version = dbxCliVersion;
+    src = pkgs.fetchurl {
+      url = "https://github.com/t8y2/dbx/releases/download/packages-v${dbxCliVersion}/dbx-cli-linux-x64-gnu.tar.gz";
+      hash = "sha256-/Mdpi48sFTHosta8d96PtiRJvR5aIYi4yzM8SNMwjS0=";
     };
-    # 只编译 cli 这个 crate,不碰 desktop/web
-    cargoBuildFlags = [
-      "-p"
-      "dbx-cli"
-    ];
-    # cmake: aws-lc-sys(rustls 后端);pkg-config + fontconfig/freetype: dbx-core 的 font-kit
-    # 这些也必须取自 dbxPkgs:漏一个,drv 就又依赖回外层 nixpkgs,上面那条不变量立刻作废。
-    nativeBuildInputs = [
-      dbxPkgs.cmake
-      dbxPkgs.pkg-config
-    ];
-    buildInputs = [
-      dbxPkgs.fontconfig
-      dbxPkgs.freetype
-      dbxPkgs.openssl
-    ];
-    # 0.4.69 起某个依赖启用了 openssl-sys 的 vendored 特性(源码编译 OpenSSL,需要 perl),
-    # 用 OPENSSL_NO_VENDOR 强制改链 nixpkgs 的 openssl,更快也更省
-    env.OPENSSL_NO_VENDOR = 1;
-    # 数据库相关测试需要外部服务,跳过
-    doCheck = false;
-    # 二进制保持原名 dbx:官方 skill(skills/dbx/SKILL.md)里的命令都是 `dbx ...`,
-    # 名字冲突由 desktop 侧让位解决(见下方 dbx-desktop wrapper)
+    sourceRoot = ".";
+    nativeBuildInputs = [ pkgs.autoPatchelfHook ];
+    installPhase = ''
+      install -Dm755 dbx $out/bin/dbx
+    '';
   };
 
-  # dbx 原名让给 CLI,desktop 这边包一层改名成 dbx-desktop。
-  # 不能 overrideAttrs 上游 derivation:hash 一变已有的本地构建全部作废(上游没有 binary cache),
-  # Tauri 要整个重编。
-  # runCommand 只做零成本包装:bin 用 makeWrapper 改名并注入环境变量(见下);desktop entry 的
-  # Exec 原本按 PATH 找 dbx,现在会打到 CLI 上,改写成 wrapper 的绝对路径;图标原样链接。
-  dbx-desktop-upstream = inputs.dbx.packages.${pkgs.stdenv.hostPlatform.system}.dbx-desktop;
-  dbx-desktop = pkgs.runCommand "dbx-desktop-renamed" { nativeBuildInputs = [ pkgs.makeWrapper ]; } ''
-    mkdir -p $out/bin $out/share/applications
+  # desktop 用 .deb(比 AppImage 小一半,且不用 FHS 沙箱)。Tauri 的标准运行时依赖由
+  # autoPatchelfHook 补 rpath;wrapGAppsHook3 提供 GIO/GSettings 环境,glib-networking
+  # 是 webview 里 HTTPS 的前提(缺了 libsoup 报 TLS/SSL support not available)。
+  # 二进制改名 dbx-desktop,把原名让给 CLI;desktop entry 的 Exec 跟着改。
+  # 列表照抄上游 flake 的 linuxTauriDeps。appindicator/librsvg 等是运行时 dlopen 的,
+  # autoPatchelf 看不见(不在 NEEDED 里),dlopen 又不认 RPATH,所以下面还要塞进 LD_LIBRARY_PATH。
+  dbxDesktopRuntimeLibs = with pkgs; [
+    webkitgtk_4_1
+    gtk3
+    libsoup_3
+    libappindicator-gtk3
+    libayatana-appindicator
+    librsvg
+    glib
+    glib-networking
+    dbus
+    at-spi2-atk
+    cairo
+    gdk-pixbuf
+    harfbuzz
+    pango
+    fontconfig
+    openssl
+    libx11
+    libxext
+    libxfixes
+  ];
+  dbx-desktop = pkgs.stdenv.mkDerivation {
+    pname = "dbx-desktop";
+    version = dbxDesktopVersion;
+    src = pkgs.fetchurl {
+      url = "https://github.com/t8y2/dbx/releases/download/v${dbxDesktopVersion}/DBX_${dbxDesktopVersion}_amd64.deb";
+      hash = "sha256-nN464rRZypzlsa+eBsh2TUOXC5IkppIxLmvAaD5Ra9U=";
+    };
+    nativeBuildInputs = with pkgs; [
+      dpkg
+      autoPatchelfHook
+      wrapGAppsHook3
+    ];
+    buildInputs = dbxDesktopRuntimeLibs;
+    unpackPhase = "dpkg-deb -x $src .";
+    installPhase = ''
+      install -Dm755 usr/bin/dbx $out/bin/dbx-desktop
+      cp -r usr/share $out/share
+      # Wayland 下 app_id 取自二进制名(改名后是 dbx-desktop),KDE 按 app_id 找同名 .desktop
+      # 拿图标;文件名或 StartupWMClass 对不上,任务栏就是默认的 "W"。三处必须一致。
+      mv $out/share/applications/DBX.desktop $out/share/applications/dbx-desktop.desktop
+      substituteInPlace $out/share/applications/dbx-desktop.desktop \
+        --replace-fail 'Exec=dbx' 'Exec=dbx-desktop' \
+        --replace-fail 'StartupWMClass=dbx' 'StartupWMClass=dbx-desktop'
+    '';
     # WebKitGTK 默认的 DMA-BUF 硬件渲染在本机(AMD Phoenix 核显 + Wayland)不兼容:
     # 界面点几下就卡死,WebKitWebProcess 在 Mesa shader 线程里堆损坏崩溃(coredump 可查),
     # AppImage/Nix 打包均复现,是 Tauri 生态已知问题。禁用 DMA-BUF 渲染器走软件合成即可,
     # 见 https://v2.tauri.app/develop/debug/linux-graphics/
-    makeWrapper ${dbx-desktop-upstream}/bin/dbx $out/bin/dbx-desktop \
-      --set WEBKIT_DISABLE_DMABUF_RENDERER 1
-    ln -s ${dbx-desktop-upstream}/share/icons $out/share/icons
-    substitute ${dbx-desktop-upstream}/share/applications/dbx.desktop \
-      $out/share/applications/dbx.desktop \
-      --replace-fail 'Exec=dbx' "Exec=$out/bin/dbx-desktop"
-  '';
+    preFixup = ''
+      gappsWrapperArgs+=(
+        --set WEBKIT_DISABLE_DMABUF_RENDERER 1
+        --prefix LD_LIBRARY_PATH : "${lib.makeLibraryPath dbxDesktopRuntimeLibs}"
+      )
+    '';
+  };
+
   # lark-cli 升到上游最新 release。nixos-unstable 里还钉在 1.0.88,而上游 larksuite/cli
   # 几天一个 tag,单独升 nixpkgs 换不来新版,只能在这里覆盖 version/src/metaDataRelease。
   # Go 纯 CLI,本地编译代价不大;这个 drv 上游 cache 里不存在,必然本地构建。
@@ -149,6 +169,7 @@ in
     ./netloc.nix
     ./develop/vscode.nix
     ./develop/claude-code.nix
+    ./develop/claude-desktop.nix
     ./develop/chrome-devtools-mcp.nix
     ./develop/codex.nix
     ./develop/pi.nix
@@ -164,7 +185,7 @@ in
   # standalone home-manager 的代在 ~/.local/state/nix/profiles/,而系统那边的 nix.gc
   # 是 root 跑 nix-collect-garbage、只扫 /nix/var/nix/profiles/——看不到这里。
   # 不配这段,每次 switch 都在 store 里永久钉住一份完整闭包(VS Code 那个 214MB 的
-  # Claude Code 插件、dbx-cli 等全在内),系统 gc 每周跑一次基本回收不到东西
+  # Claude Code 插件等全在内),系统 gc 每周跑一次基本回收不到东西
   # (发现时已积到 39 个 home-manager 代 + 90 个 profile 代)。
   # 用 nix.gc 而不是 services.home-manager.autoExpire:后者只删 home-manager-*-link,
   # 管不到 nix profile 每次 switch 留下的 profile-*-link。
@@ -228,8 +249,8 @@ in
     python3
     ripgrep # codex 喜欢用
 
-    dbx-desktop # 上游 GUI 的改名 wrapper(见上方 let),二进制名 dbx-desktop
-    dbx-cli # 自打包的 CLI(见上方 let),占用原名 dbx,供官方 skill 直接调用
+    dbx-desktop # 上游 release 的 deb(见上方 let),二进制名 dbx-desktop
+    dbx-cli # 上游 release 的 CLI(见上方 let),占用原名 dbx,供官方 skill 直接调用
     jq
     uv
     sops

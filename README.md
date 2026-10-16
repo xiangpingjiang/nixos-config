@@ -38,24 +38,26 @@ once-per-trip action, not a per-boot one.
 
 Both `MESL` and the proxy tier of `claude` are `fallback` groups that prefer the
 0.3X low-rate nodes and drop to the full-rate ones only when those are unreachable.
-That bills at 30% and — counter-intuitively — lands on cleaner exits: the Taiwan and
-Japan 0.3X nodes report `proxy=false`, while the full-rate pool often sits on a
-`proxy=true hosting=true` range. CLAUDE.md has the measurements.
+That bills at 30% and — counter-intuitively — lands on cleaner exits: the Japan 0.3X
+node (the only one the Claude group keeps) reports `proxy=false`, while the
+full-rate pool often sits on a `proxy=true hosting=true` range. CLAUDE.md has the measurements.
 
-If `netloc` is not on PATH yet (fresh checkout, no `home-manager switch`), the two
-switches by hand:
+If `netloc` is not on PATH yet (fresh checkout, no `home-manager switch`), the three
+switches by hand (the controller requires the secret):
 
-    curl -X PUT -H 'Content-Type: application/json' -d '{"name":"MESL"}' \
-      http://127.0.0.1:9097/proxies/OUT
-    curl -X PUT -H 'Content-Type: application/json' -d '{"name":"MESL_Claude"}' \
-      http://127.0.0.1:9097/proxies/claude
+    auth="Authorization: Bearer $(cat /run/secrets/mihomo_secret)"
+    for kv in OUT=MESL MESL=MESL_low claude=claude_cn; do
+      curl -X PUT -H "$auth" -H 'Content-Type: application/json' \
+        -d "{\"name\":\"${kv#*=}\"}" "http://127.0.0.1:9097/proxies/${kv%%=*}"
+    done
 
-Why the script checks `claude` separately: the group is a `fallback` and its health
-check does eventually correct a dead selection, but `store-selected` restores the
-*stored* choice on startup, and convergence was observed to take anywhere from tens
-of seconds to two or three minutes. Land in China with `DIRECT` stored and the
-first requests leave over a Chinese IP, which is not a supported region — so run
-`netloc cn` (or at least `netloc`) before starting a Claude session, not after.
+Why the script checks `claude` separately: the group is a `select` over
+`[claude_cn, DIRECT]` — it never fails over on its own (deliberately: a `fallback`
+here once fell back to `DIRECT` when every probe failed and leaked a Chinese IP).
+`store-selected` restores the *stored* choice on startup, so land in China with
+`DIRECT` stored and the first requests leave over a Chinese IP, which is not a
+supported region — so run `netloc cn` (or at least `netloc`) before starting a
+Claude session, not after.
 
 tun must be on for any of this to matter: it is the only thing that hijacks system
 DNS. With tun off, resolution falls back to the local resolver — in Singapore that
@@ -84,7 +86,7 @@ session already uses — start a new session to change.
 When Claude stops working from China, try in this order. Only the last step
 gives up the Max seat:
 
-1. `netloc` — is `claude` on `MESL_Claude` rather than `DIRECT`, and are the
+1. `netloc` — is `claude` on `claude_cn` rather than `DIRECT`, and are the
    airport nodes reachable from this network? (`netloc cn` fixes the first and
    reports the second)
 2. `journalctl -u mihomo -f` while retrying — a dial error names the entry IP it

@@ -4,10 +4,64 @@
 
 {
   pkgs,
+  inputs,
   ...
 }:
 
 let
+  # 完整版(带本地 sherpa-onnx);只用云端识别可换成 .fcitx5-vinput-lite
+  fcitx5-vinput = inputs.fcitx5-vinput.packages.${pkgs.stdenv.hostPlatform.system}.default;
+
+  # 解开蓝牙的 rfkill 并确认适配器起来,起不来就重启 bluetoothd。
+  # 挂起唤醒、开机、bt-fix 三处共用。
+  bluetoothUnblock = pkgs.writeShellApplication {
+    name = "bluetooth-unblock";
+    runtimeInputs = with pkgs; [
+      util-linux
+      bluez
+      systemd
+      gnugrep
+      coreutils
+    ];
+    text = ''
+      powered() { bluetoothctl show 2>/dev/null | grep -q 'Powered: yes'; }
+      rfkill unblock bluetooth
+      for _ in $(seq 10); do
+        powered && exit 0
+        sleep 1
+      done
+      echo "蓝牙 10 秒内没起来,重启 bluetooth.service" >&2
+      systemctl restart --no-block bluetooth.service
+      sleep 3
+      bluetoothctl power on || true
+    '';
+  };
+
+  # 应急命令:醒来后蓝牙鼠标连不上时用(终端敲 bt-fix,或 plasma.nix 里的 Meta+Shift+B)。
+  # 解锁 + 确认适配器 + 逐个连接已配对的输入设备。
+  btFix = pkgs.writeShellApplication {
+    name = "bt-fix";
+    runtimeInputs = with pkgs; [
+      bluetoothUnblock
+      bluez
+      gnugrep
+      gawk
+      libnotify
+    ];
+    text = ''
+      bluetooth-unblock
+      bluetoothctl power on || true
+      bluetoothctl devices Paired | awk '{print $2}' | while read -r mac; do
+        if bluetoothctl info "$mac" | grep -q 'Icon: input-'; then
+          bluetoothctl connect "$mac" || true
+        fi
+      done
+      status=$(bluetoothctl devices Connected)
+      echo "''${status:-没有已连接的设备}"
+      notify-send -a bt-fix "蓝牙" "''${status:-没有已连接的设备,鼠标拨一下电源开关再试}" || true
+    '';
+  };
+
   # 精确字族名 "Noto Sans SC" 的字体。nixpkgs 的 noto-fonts-cjk-sans 提供的族名是
   # "Noto Sans CJK SC",两者对不上:飞书画板导出的 SVG 里 font-family 写的是
   # "Noto Sans SC"(飞书线上用的就是这套),resvg 靠 fontdb 按族名精确匹配、不解析
@@ -43,6 +97,8 @@ in
       "https://cache.numtide.com"
 
       "https://nix-community.cachix.org"
+      # binary cache for fcitx5-vinput
+      "https://fcitx5-vinput.cachix.org"
       # 优先使用国内镜像
 
       # "https://mirrors.cernet.edu.cn/nix-channels/store"
@@ -55,6 +111,7 @@ in
     trusted-public-keys = [
       "niks3.numtide.com-1:DTx8wZduET09hRmMtKdQDxNNthLQETkc/yaX7M4qK0g="
       "nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs="
+      "fcitx5-vinput.cachix.org-1:XpX3AA6+dDIX4qJhb1QM7sbTwX6/qSlGvW8Z5NK6XdU="
     ];
     trusted-users = [
       "root"
@@ -102,6 +159,69 @@ in
   # (那次是 ~35G 工作集塞进 27G 机器,真正的解法是关掉闲置的 chromium 标签页/VS Code 窗口)。
   zramSwap.memoryPercent = 100;
 
+  # 挂起期间给蓝牙断电,醒来再开(2026-10 连续三晚电池耗光的修复)。
+  # 本机蓝牙(MediaTek 0489:e0cd)是挂在 XHC0(63:00.3)下的内部 USB 设备,和核显同在
+  # PCIe 桥 00:08.1 下。蓝牙鼠标连着时挂起,那个桥会报 `PME: Spurious native interrupt`
+  # 把挂起打断,内核立刻重试,而 amdgpu 在这个"打断—恢复—再挂起"的路径上偶尔卡死:
+  # 日志停在第二次 `PM: suspend entry`,机器以 5-6W 耗一整夜(正常 s2idle 不到 1W)。
+  # rfkill 直接断掉蓝牙,比只关 USB 唤醒可靠(btusb 挂起时会按配对设备自己重新打开唤醒)。
+  # 代价:不能晃鼠标唤醒,要开盖或按电源键;醒来鼠标一两秒后自动重连。
+  # StopWhenUnneeded:sleep.target 在唤醒后退出,本单元随之 stop,ExecStop 就是"醒来"的钩子。
+  systemd.services.bluetooth-sleep = {
+    description = "挂起期间关闭蓝牙";
+    before = [ "sleep.target" ];
+    wantedBy = [ "sleep.target" ];
+    unitConfig.StopWhenUnneeded = true;
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+      ExecStart = "${pkgs.util-linux}/bin/rfkill block bluetooth";
+      ExecStop = "${bluetoothUnblock}/bin/bluetooth-unblock";
+    };
+  };
+
+  # 开机也解一次锁。systemd-rfkill 会在关机时保存、开机时恢复 rfkill 状态,
+  # 而电池恰恰可能在"挂起中、蓝牙被 block"时耗光 —— 不解锁的话下次开机蓝牙是关的,
+  # 触摸板又坏着,就没有鼠标可用了。
+  systemd.services.bluetooth-unblock-boot = {
+    description = "开机时确保蓝牙未被 rfkill 锁住";
+    after = [
+      "systemd-rfkill.service"
+      "bluetooth.service"
+    ];
+    wantedBy = [ "multi-user.target" ];
+    serviceConfig = {
+      Type = "oneshot";
+      ExecStart = "${bluetoothUnblock}/bin/bluetooth-unblock";
+    };
+  };
+
+  # 和 systemPackages.nix 里那份列表合并
+  environment.systemPackages = [
+    btFix
+    fcitx5-vinput # vinput CLI 和 vinput-gui
+  ];
+
+  # 让 bt-fix(应急命令,不带 sudo)能重启 bluetooth.service。
+  # 鼠标是唯一的指点设备,应急时可能只能靠快捷键起它,没有终端输 sudo 密码。
+  security.polkit.extraConfig = ''
+    polkit.addRule(function(action, subject) {
+      if (action.id == "org.freedesktop.systemd1.manage-units" &&
+          action.lookup("unit") == "bluetooth.service" &&
+          subject.user == "xpj") {
+        return polkit.Result.YES;
+      }
+    });
+  '';
+
+  # 休眠兜底:KDE 电池模式下"睡眠"走 suspend-then-hibernate(plasma.nix 的 whenSleepingEnter),
+  # 睡满 HibernateDelaySec 后写盘关机。只救得了"睡着了但睡得浅",救不了彻底卡死
+  # (卡死时 RTC 闹钟也不会被处理)。
+  # 注意 zram:休眠要先把内存压到 image_size 以下,优先级更高的 zram 换出等于没腾出物理内存,
+  # 内存吃得很满时可能 `Error -12 creating image` 失败;systemd 失败后会回到挂起,不会丢东西。
+  boot.resumeDevice = "/dev/disk/by-uuid/59506173-06a5-402e-9060-39a2b835927e";
+  systemd.sleep.settings.Sleep.HibernateDelaySec = "2h";
+
   # Use latest kernel.
   boot.kernelPackages = pkgs.linuxPackages_latest; # 取决于 flake.lock 锁定的 nixpkgs 版本 和 https://search.nixos.org/packages?channel=unstable 无关
 
@@ -138,7 +258,26 @@ in
           pkgs.rime-ice
         ];
       })
+      fcitx5-vinput
     ];
+  };
+
+  # 语音输入的另一半:识别在这个 daemon 里跑,fcitx5 插件只管按键和上屏(经 D-Bus 通信)。
+  # 上游 unit 装在 share/systemd/user,systemd.packages 只扫 lib/systemd/user,所以这里自己声明。
+  # 模型不进 Nix:在 vinput-gui 或 `vinput model add` 下载,落在 ~/.local/share/vinput 一类目录。
+  systemd.user.services.vinput-daemon = {
+    description = "Vinput Voice Input Daemon";
+    after = [ "pipewire.service" ];
+    wantedBy = [ "default.target" ];
+    # 云端 provider(doubaoime 等)是 daemon 拉起的 python 脚本,继承这里的环境。
+    # 脚本用 ctypes.util.find_library("opus") 找库,NixOS 上没有 ldconfig 缓存,
+    # 上游 wrapper 塞的 LD_LIBRARY_PATH 它不查(实测返回 None),只能显式给路径。
+    environment.VINPUT_ASR_LIBOPUS_PATH = "${pkgs.libopus}/lib/libopus.so.0";
+    serviceConfig = {
+      Type = "dbus";
+      BusName = "org.fcitx.Vinput";
+      ExecStart = "${fcitx5-vinput}/bin/vinput-daemon";
+    };
   };
 
   # Define a user account. Don't forget to set a password with ‘passwd’.
@@ -148,8 +287,21 @@ in
     extraGroups = [
       "networkmanager"
       "wheel"
+      # Claude Desktop 的 Cowork 要求(/dev/vhost-vsock 官方说只对 kvm 组开放;本机 udev 给的是 0666,
+      # 但别依赖这个)。见 home-manager/develop/claude-desktop.nix
+      "kvm"
     ];
   };
+
+  # Claude Desktop 的 Cowork 用 QEMU 起虚拟机,固件和 virtiofsd 的路径在应用里写死成 Debian 的位置:
+  #   固件:/usr/share/OVMF/OVMF_CODE_4M.fd 或 OVMF_CODE.fd(VARS 模板由 CODE→VARS 替换推出)
+  #   virtiofsd:/usr/libexec/virtiofsd 或 /usr/bin/virtiofsd(.deb 自带的那份只在 Ubuntu 22.04 上才用)
+  # qemu-system-x86_64 是按 PATH 找的,由 HM 那边的 wrapper 提供,不需要放进 /usr。
+  boot.kernelModules = [ "vhost_vsock" ];
+  systemd.tmpfiles.rules = [
+    "L+ /usr/share/OVMF - - - - ${pkgs.OVMF.fd}/FV"
+    "L+ /usr/libexec/virtiofsd - - - - ${pkgs.virtiofsd}/bin/virtiofsd"
+  ];
 
   # Allow unfree packages
   nixpkgs.config.allowUnfree = true;

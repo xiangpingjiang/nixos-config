@@ -9,7 +9,7 @@
   programs.agent-skills = {
     enable = true;
 
-    # dbx 官方 skill,直接取自 flake input 源码(钉死 rev,见 flake.nix 里 dbx 的注释)。
+    # dbx 官方 skill,直接取自 flake input 源码(钉 CLI 的 release tag,见 flake.nix 里 dbx 的注释)。
     # 前提:PATH 里的 dbx 是 CLI(见 home.nix 的 dbx-cli/dbx-desktop 命名安排)。
     sources.dbx = {
       input = "dbx";

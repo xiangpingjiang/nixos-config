@@ -153,11 +153,21 @@ let
               --kubeconfig|--context|--namespace|-n|--cluster|--user|--server) skip=1 ;;
               -*) ;;
               *)
+                state=idle
                 case "$tok" in
                   # 只读子命令白名单,其余一律视为需要询问
-                  get|describe|logs|top|events|explain|version|api-resources|api-versions|cluster-info|auth|diff|wait|completion) ;;
+                  get|describe|logs|top|events|explain|version|api-resources|api-versions|cluster-info|diff|wait|completion) ;;
+                  # auth 底下混着写操作(reconcile 会创建/补全 RBAC),再看一层
+                  auth) state=auth ;;
                   *) bad=$tok ;;
-                esac
+                esac ;;
+            esac ;;
+          auth)
+            case "$tok" in
+              --kubeconfig|--context|--namespace|-n|--cluster|--user|--server) skip=1 ;;
+              -*) ;;
+              *)
+                case "$tok" in can-i|whoami) ;; *) bad="auth $tok" ;; esac
                 state=idle ;;
             esac ;;
         esac
@@ -184,25 +194,8 @@ let
   #   nix store prefetch-file --json --name claude \
   #     "https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases/<version>/linux-x64/claude"
   # 查上游当前最新版本:curl -s "https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases/latest"
-  claudeCodeVersion = "2.1.286";
+  claudeCodeVersion = "2.1.301";
   claudeCodeUpstream = inputs.llm-agents.packages.${pkgs.stdenv.hostPlatform.system}.claude-code;
-  # CCR 把 Claude Code 的 Anthropic Messages 请求转换后转给其他模型。这里用
-  # llm-agents 的包而不是 nixpkgs:当前锁定的 nixpkgs 还是 2.0.0,尚不支持从
-  # ~/.codex/auth.json 导入 ChatGPT/Codex OAuth;llm-agents 已是 3.x。
-  # OAuth 凭据只由 `codex login` 和 CCR 保存在用户目录,绝不能写进 Nix store。
-  claudeCodeRouter = inputs.llm-agents.packages.${pkgs.stdenv.hostPlatform.system}.claude-code-router;
-
-  # CCR 里的 Claude Code profile 请命名为 ChatGPT。这样日常 `claude` 仍走原来的
-  # Claude 订阅,显式运行 `claude-gpt` 才经 CCR 使用 ChatGPT/Codex 订阅。
-  # profile 与 provider 存在 CCR 的 config.sqlite 中,包含 OAuth 派生凭据,不能声明进
-  # world-readable 的 Nix store；首次配置步骤见运行 `claude-gpt` 时的报错提示。
-  claudeGpt = pkgs.writeShellApplication {
-    name = "claude-gpt";
-    runtimeInputs = [ claudeCodeRouter ];
-    text = ''
-      exec ccr ChatGPT cli -- "$@"
-    '';
-  };
   claudeCodePkg =
     if lib.versionAtLeast claudeCodeUpstream.version claudeCodeVersion then
       claudeCodeUpstream
@@ -213,7 +206,7 @@ let
         version = claudeCodeVersion;
         src = pkgs.fetchurl {
           url = "https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases/${claudeCodeVersion}/linux-x64/claude";
-          hash = "sha256-/lA/ZcYonVnCPlshrkTwNYP5l90zosv8datPlvuPxz8=";
+          hash = "sha256-vBqtmYLHtZx9iJ/5JZXWHPRuCm6uB0y1UdkyqYm80iI=";
         };
       });
   # 跨窗口列出活跃的 Claude Code 会话(zellij 的 cc tab 循环跑的就是它,见 zellij/dev.kdl)。
@@ -255,6 +248,20 @@ let
       RENDER_PY=${ccSessionsRender}/share/cc-sessions/render.py
     ''
     + builtins.readFile ./claude-sessions.sh;
+  };
+  # 一条命令把两份 Claude Code(终端 CLI + VS Code 插件)升到最新、switch、重启 VS Code。
+  # 改的是仓库里两个 claudeCodeVersion 和 hash,流程同 CLAUDE.md「升级 Claude Code 到最新」。
+  # nix / home-manager 不放进 runtimeInputs:用调用方 PATH 里的那份(系统 nix、profile 里的 HM)。
+  ccUpgrade = pkgs.writeShellApplication {
+    name = "cc-upgrade";
+    runtimeInputs = with pkgs; [
+      curl
+      jq
+      gnused
+      coreutils
+      procps
+    ];
+    text = builtins.readFile ./cc-upgrade.sh;
   };
   # ---- 国内模型兜底入口(claude-ds)----
   # 官方 API 连不上时的备用通道。DeepSeek / 智谱 / Moonshot 都直接提供 Anthropic
@@ -359,10 +366,9 @@ in
 {
   home.packages = [
     ccSessions
+    ccUpgrade
     ccSessionsRender
     claudeDeepseek
-    claudeCodeRouter
-    claudeGpt
   ];
 
   programs.claude-code = {

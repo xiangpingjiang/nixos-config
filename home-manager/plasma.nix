@@ -1,5 +1,5 @@
 {
-
+  config,
   pkgs,
   ...
 }:
@@ -50,7 +50,9 @@
         };
         whenLaptopLidClosed = "lockScreen";
         inhibitLidActionWhenExternalMonitorConnected = true;
-        whenSleepingEnter = "standby";
+        # 先挂起,睡满 2h(configuration.nix 的 HibernateDelaySec)再写盘休眠,
+        # 防挂起睡不深时一夜耗光电池。AC 下没这个风险,仍是 standby。
+        whenSleepingEnter = "standbyThenHibernate";
         dimDisplay = {
           enable = true;
           idleTimeout = 240; # 4 分钟变暗
@@ -182,6 +184,14 @@
         ];
       }
     ];
+    # 蓝牙鼠标连不上时的应急键(触摸板坏了,鼠标是唯一的指点设备)。
+    # bt-fix 由 configuration.nix 装进系统 profile。
+    hotkeys.commands.bt-fix = {
+      name = "修复蓝牙鼠标";
+      key = "Meta+Shift+B";
+      command = "/run/current-system/sw/bin/bt-fix";
+    };
+
     shortcuts = {
       ActivityManager.switch-to-activity-c843b20a-5f2b-41f6-a014-0824867d473b = [ ];
       "KDE Keyboard Layout Switcher"."Switch keyboard layout to English (US)" = [ ];
@@ -460,7 +470,8 @@
       kcminputrc."Libinput/1267/12928/ELAN06FA:00 04F3:3280 Touchpad".ScrollFactor = 1.5;
       kded5rc.Module-browserintegrationreminder.autoload = false;
       kded5rc.Module-device_automounter.autoload = false;
-      kdeglobals.General.TerminalApplication = "/nix/store/k3wrd5n1a709fkhrv52mwnxqyabl55jw-ghostty-1.2.3/bin/ghostty --gtk-single-instance=true";
+      # 从 programs.ghostty 取路径:rc2nix 导出时写死过 store 路径,ghostty 一升级 + gc 就指向空处
+      kdeglobals.General.TerminalApplication = "${config.programs.ghostty.package}/bin/ghostty --gtk-single-instance=true";
       kdeglobals.General.TerminalService = "com.mitchellh.ghostty.desktop";
       kdeglobals.General.UseSystemBell = true;
       kdeglobals."KFileDialog Settings"."Allow Expansion" = false;

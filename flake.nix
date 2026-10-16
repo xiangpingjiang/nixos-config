@@ -28,6 +28,10 @@
       url = "github:numtide/llm-agents.nix";
       # 不要 override nixpkgs，否则 derivation hash 变化导致 cache.numtide.com 缓存全部未命中
     };
+    # fcitx5 语音输入插件(见 configuration.nix 的 i18n.inputMethod)。
+    # 同 llm-agents:不要 follows nixpkgs,否则 fcitx5-vinput.cachix.org 全部未命中,
+    # 要在本地编 sherpa-onnx + onnxruntime。
+    fcitx5-vinput.url = "github:xifan2333/fcitx5-vinput";
     nix4vscode = {
       url = "github:nix-community/nix4vscode/master";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -68,12 +72,13 @@
       flake = false;
     };
 
+    # dbx 官方 skill 的源码。CLI/desktop 本身改吃上游 release 的预编译二进制(见 home.nix),
+    # 这里只剩 skills/ 目录有用,所以 flake = false,不再拉 crane/rust-overlay/那棵 nixpkgs。
+    # 钉 CLI 的 release tag:skill 文档描述的是 CLI 的命令,两者必须同版本(理由同 lark-skills)。
+    # 升级手续:改这里的 tag,同时改 home-manager/home.nix 里 dbxCliVersion(同一个版本号)。
     dbx = {
-      # 钉死 rev：上游没有任何 binary cache，dbx-cli/dbx-desktop 都是本地编译（Rust+Tauri，代价大），
-      # 不钉的话每次 nix flake update 都会拉最新 rev 触发重编。
-      # 升级步骤：改这里的 rev → 重新 prefetch home.nix 里 cargoDeps 的 outputHashes → rebuild
-      url = "github:t8y2/dbx/7d5cae6486706973c2ac13138b783a889fdbccf1";
-      # 不要 follows nixpkgs：会改变 derivation hash，导致已有本地构建全部作废
+      url = "github:t8y2/dbx/packages-v0.4.115";
+      flake = false;
     };
   };
 

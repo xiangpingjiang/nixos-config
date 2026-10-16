@@ -43,6 +43,8 @@ in
   # 表象是 nmcli 显示 activated 但 10.129/10.130/10.131 全不通)。
   # 现在两地的 VPN 域名(vpn1 国内 / globalvpn 新加坡)都在 fake-ip-filter 里,
   # 所以两地都可以开着,切地点用 netloc。换 VPN 服务器域名时必须同步改那里。
+  # 2026-10-07 回到新加坡关过一次;10-08 为访问 polymarket(新加坡 DNS sinkhole)重新打开。
+  # 在新加坡开着时 netloc sg;回国按 CLAUDE.md 的切换顺序跑 netloc cn。
   services.mihomo = {
     enable = true;
     tunMode = true;
@@ -243,6 +245,9 @@ in
   # Enable the KDE Plasma Desktop Environment.
   services.displayManager.sddm.enable = true;
   services.desktopManager.plasma6.enable = true;
+  # nixpkgs 2026-10 起 plasma6 模块默认 programs.kde-pim.enable = mkDefault true,
+  # 会装上整套 KMail/Kontact/Merkuro/Akonadi;本机邮件用 himalaya,用不上,关掉。
+  programs.kde-pim.enable = false;
 
   # Configure keymap in X11
   # services.xserver.xkb = {

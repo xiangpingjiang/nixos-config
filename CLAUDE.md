@@ -41,7 +41,7 @@ nixfmt <file.nix>
 | `nix profile`(HM 装 home.packages 时留下) | `~/.local/state/nix/profiles/profile-*-link` | 同上 |
 
 发现时系统只剩 4 代,而用户侧积了 39 个 HM 代 + 90 个 profile 代(最老的追到 2026-08-08)。
-这些全是 GC root,每个钉住一份完整闭包(那个 214MB 的 Claude Code 插件、dbx-cli 都在内),
+这些全是 GC root,每个钉住一份完整闭包(那个 214MB 的 Claude Code 插件也在内),
 系统 gc 每周跑一次基本回收不到东西。
 
 HM 侧用 `nix.gc.automatic` 而不是 `services.home-manager.autoExpire`:后者只删
@@ -54,25 +54,45 @@ sudo 跑的是 root 的 profile)。
 
 ### flake 输入的缓存约束(重要)
 
-`flake.nix` 中 `llm-agents` 和 `dbx` **故意不 follows nixpkgs**:一旦 override,derivation hash 变化会导致上游 binary cache(cache.numtide.com 等)全部未命中,需要本地编译(dbx 是 Rust+Tauri,代价很大)。修改 inputs 时不要"顺手"给它们加 `inputs.nixpkgs.follows`。
+`flake.nix` 中 `llm-agents` **故意不 follows nixpkgs**:一旦 override,derivation hash 变化会导致上游 binary cache(cache.numtide.com 等)全部未命中,需要本地编译。修改 inputs 时不要"顺手"给它加 `inputs.nixpkgs.follows`。
 
-同样的道理适用于**自打包的东西吃哪棵 nixpkgs**。`dbx-cli`(上游 flake 只输出 desktop,CLI 得自己打)
-一度用本仓库的 `pkgs.rustPlatform` 构建,结果是:dbx 的 rev 钉死、版本号一个字没改,但只要
-`nix flake update` 动了 nixpkgs,rustc/stdenv 一变 derivation hash 就变,上游又没有 cache,
-每次例行更新都要本地重编十几二十分钟。现在改成 `import inputs.dbx.inputs.nixpkgs`(见
-`home-manager/home.nix`),不变量是:只有 dbx 这个 input 及其子输入树变化才重编。
-注意 dbx-cli 段落里 `cmake`/`pkg-config`/`fontconfig`/`freetype`/`openssl` 也必须取自 `dbxPkgs`
-——漏一个,外层 nixpkgs 就又进闭包,整个安排作废。验证方法(两边必须打印同一个 drv):
+### dbx:吃上游 release 的预编译二进制(2026-10-11 起)
 
-```bash
-EXPR='ps: (builtins.head (builtins.filter (p: (p.pname or "") == "dbx-cli") ps)).drvPath'
-nix eval --raw .#homeConfigurations.xpj.config.home.packages --apply "$EXPR"
-nix eval --raw --override-input nixpkgs github:NixOS/nixpkgs/<任意旧 rev> \
-  .#homeConfigurations.xpj.config.home.packages --apply "$EXPR"
-```
+上游 flake 没有 binary cache,也不打包 CLI。之前两边都从源码编(Rust + Tauri),为了不让
+`nix flake update` 动了外层 nixpkgs 就触发重编,还专门 `import inputs.dbx.inputs.nixpkgs` 构建 CLI。
+结果是升级成本高到不敢升:rev 钉在 08-21,到 10-11 已落后 2748 个 commit(CLI 0.4.69 vs 0.4.114,
+desktop 0.5.91 vs 0.6.39)。
 
-代价是 CLI 链到的 glibc/openssl 跟着 dbx 那棵 nixpkgs 走(比外层滞后),安全更新随 dbx 升级到来;
-desktop 本来就是这个状况。
+现在 `home-manager/home.nix` 里两个包都是 `fetchurl` + `autoPatchelfHook`,drv 里没有编译:
+
+- **CLI**:`packages-v<版本>` tag 下的 `dbx-cli-linux-x64-gnu.tar.gz`,只依赖 glibc
+  (openssl/fontconfig 静态链入)。保持原名 `dbx`,供 skill 调用。
+- **desktop**:`v<版本>` tag 下的 `.deb`(不用 AppImage:大一倍且要 FHS 沙箱)。Tauri 标准依赖
+  (webkitgtk_4_1/gtk3/libsoup_3/...)交给 autoPatchelf,`wrapGAppsHook3` + `glib-networking`
+  保证 webview 能走 HTTPS;二进制改名 `dbx-desktop`,`WEBKIT_DISABLE_DMABUF_RENDERER=1` 照旧。
+
+**两条 release 线版本号不同步,各钉各的**(`dbxCliVersion` / `dbxDesktopVersion`)。
+`flake.nix` 的 `dbx` input 变成 `flake = false`、钉 CLI 的 tag,只给 agent-skills 提供
+`skills/` 源码 —— skill 描述的是 CLI 命令,所以**升 CLI 时同步改这个 tag**。
+升级命令写在 home.nix 那段注释里。
+
+**desktop 钉在 0.6.38,升级前先查透明窗口。** 0.6.39 给 Linux 加了 `src-tauri/tauri.linux.conf.json`
+(`"transparent": true`,上游 commit `786ccad`),在本机 KDE Wayland 下界面一交互就整窗狂闪、CPU 100%
+(上游 issue #11736 / #11046 是同一类)。上游 `6cd2dc1` 已改成默认不透明、`DBX_LINUX_FLOATING_FRAME=1`
+才开,但它晚于 v0.6.40 提交。升级前跑 `gh api repos/t8y2/dbx/compare/6cd2dc1c9...v<版本> --jq .status`,
+返回 `ahead`/`identical` 才能升。
+
+排查时走过的两条弯路,别再试:`WEBKIT_DISABLE_COMPOSITING_MODE=1` / `GDK_BACKEND=x11` 不解决
+(根子在应用自己的透明窗口);把 webkitgtk 钉回旧 nixpkgs 的 2.52.5 更糟 —— 和系统当前的 mesa
+不兼容,`WebKitWebProcess` 在 `PlatformDisplayDefault::create` 里 `EGL_BAD_PARAMETER` 直接 abort。
+运行时库必须和系统驱动同一棵 nixpkgs,就用外层 `pkgs`。
+
+界面右上角的 **Update 按钮别点**:自更新要改写安装目录,store 是只读的。升级只走改版本号。
+
+**跨大版本升级后 CLI 可能报 `DATA_MIGRATION_REQUIRED`**:0.6.x 对连接凭据做了"data security
+upgrade",必须先开一次新版 desktop 走完迁移向导(它会在 `~/.local/share/com.dbx.app/` 下自动留
+`dbx-secret-migration-*` 备份),之后 `dbx doctor` 显示 `Connection loading | ok`。迁移是单向的,
+回滚到旧版之前得恢复数据目录。
 
 ### Claude Code 有两份互不相干的二进制
 
@@ -99,6 +119,12 @@ CLI 那份是"上游追上就自动让路"的写法(`lib.versionAtLeast` 比一�
 
 #### 说「升级 Claude Code 到最新」时照这个做
 
+整套流程已打包成 `cc-upgrade`(`develop/cc-upgrade.sh`):查两边最新版 → 只往前升、改版本号和 hash →
+`home-manager switch` → 插件换了代就重启所有 VS Code 窗口(`--no-restart` 不重启,`--restart-only` 只重启)。
+重启经 `systemd-run` 跑在 VS Code 进程树之外,SIGTERM 优雅退出后不带参数重开 `code`,窗口和未保存内容靠
+restoreWindows / hotExit 默认值恢复。**在 VS Code 里的 Claude 会话中跑它会把这个会话自己也重启掉**,
+所以由 Claude 代跑时用 `--no-restart`,重启留给用户。下面是它内部做的事,脚本坏了再手动照做:
+
 版本号不要问用户,也不要凭记忆填,两条命令各查各的(实测 2026-09-12 两边都返回 `2.1.268`):
 
 ```bash
@@ -124,6 +150,19 @@ curl -s -X POST 'https://marketplace.visualstudio.com/_apis/public/gallery/exten
 等上游追上,但"升级到最新"通常意味着现在就要用上,所以默认直接钉版本号 —— `lib.versionAtLeast`
 会在 llm-agents 追上之后自动让路,钉了不用记着撤。
 
+### Claude Desktop(develop/claude-desktop.nix)
+
+官方只发 Debian apt 仓库(Linux beta),这里直接 `fetchurl` 仓库池里的 `.deb`(现成 Electron 构建)+
+`autoPatchelfHook`,drv 里没有编译。**应用在 Linux 上不自更新**,升级只能改 `claudeDesktopVersion`
+和 hash,查版本的命令写在文件注释里。数据目录 `~/.config/Claude`。
+`chrome-sandbox` 的 setuid 位解包时丢掉(沙箱里 chmod 不了,Chromium 走 userns 不需要它)。
+**Cowork 分两侧配**:应用按 PATH 找 `qemu-system-x86_64`,由 wrapper 的 PATH 提供(HM 侧);
+固件和 virtiofsd 的路径在 app.asar 里写死成 Debian 位置(`/usr/share/OVMF/OVMF_CODE.fd`、
+`/usr/libexec/virtiofsd`),由 `configuration.nix` 的 `systemd.tmpfiles` 软链过去,
+加上 `kvm` 组和 `vhost_vsock` 模块(系统侧,要 nixos-rebuild)。.deb 自带的 virtiofsd 只在
+Ubuntu 22.04 上才被采用,别指望它。qemu 由 Go 写的 `cowork-linux-helper` 再校验一次
+(`main.validateQEMUPath`,逻辑没逆出来);要是它拒绝 store 路径,再往 `/usr/bin` 软链一份。
+
 ### 官方 API 连不上时的兜底入口(claude-ds,claude-code.nix)
 
 `claude-ds` 把 Claude Code 接到 DeepSeek 的 Anthropic 兼容端点
@@ -135,12 +174,6 @@ curl -s -X POST 'https://marketplace.visualstudio.com/_apis/public/gallery/exten
 提供原生 Anthropic 端点,router 只在 provider 没有原生端点、或要按难度在多家之间路由时
 才值得引入 —— 多一跳还多一处 tool_use 保真风险。加别的 provider 就再调一次
 `mkFallbackClaude`(一个 attrset 的事)。
-
-唯一用了 router 的是 **`claude-gpt`**:ChatGPT/Codex 订阅没有原生 Anthropic 端点,正是上面
-说的例外。它是 `ccr ChatGPT cli` 的薄包装(CCR 取自 llm-agents,nixpkgs 那版还是 2.0.0,
-不支持导入 `~/.codex/auth.json` 的 OAuth)。CCR 的 profile 必须叫 `ChatGPT`,profile 和
-provider 存在 CCR 自己的 `config.sqlite` 里——含 OAuth 派生凭据,所以**不声明进 Nix store**,
-首次配置步骤看运行 `claude-gpt` 时的报错提示。
 
 **切换必须走 `claude --settings`,不能靠 export。** settings 文件的 `env` 块会**替换**
 从 shell 继承的同名变量(文档原文,实测也是),所以 `ANTHROPIC_BASE_URL=... claude` 在本机
@@ -223,7 +256,7 @@ SyntaxError。drv 里没有编译,`nix flake update` 之后重建就是一次复
   `mcp__plugin_hm_chrome__<tool>`(写 permissions 规则按这个匹配);
 - 终端 `claude` 和 VS Code 插件共用 `~/.claude`,**两个入口都吃得到**。前提是两边都
   ≥ 2.1.157:低于这个版本模块会退回 `--plugin-dir` wrapper,那条路只包住终端的 `claude`,
-  插件那份二进制永远拿不到(本机两处都钉在 2.1.286);
+  插件那份二进制永远拿不到(本机两处都钉在 2.1.296);
 - 和 hooks 一样**只对新开的会话生效**,switch 完已开着的会话不会凭空多出这个服务。
 
 #### 为什么只有一个 server(2026-09-22 重构)
@@ -698,8 +731,9 @@ vscode://anthropic.claude-code/open?session=<sessionId>[&prompt=<text>]
 
 ### mihomo 的双地点切换(一个 OUT 开关)
 
-> **mihomo 两地都常开**(2026-09-20 到 09-30 在新加坡关过,因为 tun 打死了公司 VPN,
-> 见下面「fake-ip 与 VPN 的 remote 地址」)。现在两地的 VPN 域名都在 `fake-ip-filter` 里:
+> **mihomo 目前开着**(2026-10-07 回新加坡后关过一天,10-08 为访问 polymarket 重新打开——新加坡对它是 DNS sinkhole,要 tun 接管 DNS;
+> 开关在 `services.nix` 的 `services.mihomo.enable`)。之前 09-20 到 09-30 在新加坡也关过,因为 tun 打死了公司 VPN,
+> 见下面「fake-ip 与 VPN 的 remote 地址」,那个问题已修,两地开着都可以。现在两地的 VPN 域名都在 `fake-ip-filter` 里:
 > 国内 `vpn1.corp.rockflow.ai`、新加坡 `globalvpn.rockflow.ai`。`claude-code.nix` 的 `env`
 > 里 `HTTPS_PROXY`/`HTTP_PROXY`/`NO_PROXY` **目前是注释掉的**:带上 proxy 会影响公司 VPN 连接。
 > 代价是 Claude 只靠 tun 分流,tun 掉了 API 请求会直连出去(fail-open),开 Claude 前用 `netloc` 确认 tun 在。
@@ -785,7 +819,10 @@ curl -X PUT http://127.0.0.1:9097/providers/proxies/mesl_providers
 新加坡这边 `polymarket.com` 和 `bet365.com` 被本地 DNS 解析到同一个 AWS sinkhole
 (`13.248.219.95` / `76.223.70.70`),连上去 0.06s 就失败;而强制用真实 IP
 (`104.18.34.205`)直连是 200 / 0.4s,clob API 也返回完整数据。**所以在新加坡不需要任何
-代理,只要 DNS 是干净的。**受限辖区是 "The US, Ontario, GB, and OFAC",新加坡不在内。
+代理,只要 DNS 是干净的。** **但能打开不等于能交易**:官方 geoblock 文档(docs.polymarket.com/api-reference/geoblock,
+2026-10-08 查)把新加坡 `SG` 列为 close-only(网页和 API 都只能平仓、不能开新仓),
+`https://polymarket.com/api/geoblock` 从本机直连返回 `"blocked":true,"country":"SG"`。
+之前这里写的"受限辖区只有 US/Ontario/GB/OFAC、新加坡不在内"已过时。
 
 反过来,机场(MESL)是**国内中转型**:172 个节点只挂在两个入口上,都在中国大陆——
 `cl-188` → `106.75.239.109`(上海联通),`cl-199` → `106.75.129.72`(广州电信)。
@@ -1065,6 +1102,44 @@ v2 的两个行为变化:账户级的 `email`/`display-name` 配置项和 `[mess
 
 `mailbox.alias` 里 sent/drafts/trash 是手填的:v2 的 IMAP 只自动认 INBOX,其余
 special-use 角色上游(io-imap)还没实现发现。改完拿 `himalaya mailbox list` 核对。
+
+### 挂起一夜耗光电池:蓝牙假唤醒 + 休眠兜底(configuration.nix)
+
+2026-10-10 / 10-11 / 10-12 三晚,电池模式下空闲 10 分钟自动挂起,第二天冷启动时电量 0%。
+日志模式每次一样:`pcieport 0000:00:08.1: PME: Spurious native interrupt!` →
+`early wake event detected` 打断挂起 → 恢复途中 amdgpu 报 `amdgpu_dm_handle_vrr_transition`
+WARNING → 内核立刻重试 `PM: suspend entry`,**之后日志断掉、再没有 `suspend exit`**。
+按 upower 历史推算那段时间 5-6W(正常 s2idle < 1W),即没睡着、卡在半醒状态。
+本机只有 s2idle(`/sys/power/mem_sleep` 里没有 deep)。
+
+`00:08.1` 桥下是核显 `63:00.0` 和 XHC0/XHC1,而**蓝牙(MediaTek `0489:e0cd`)是挂在 XHC0
+下的内部 USB 设备**(Wi-Fi 走另一个桥 `00:02.2`)。那几晚没插 USB,只有蓝牙鼠标连着,
+所以挂起期间用 rfkill 给蓝牙断电(`bluetooth-sleep`,`StopWhenUnneeded` 让 ExecStop 成为唤醒钩子)。
+不用"只关 USB 唤醒":btusb 挂起时会按配对的 HID 设备自己把唤醒再打开。
+`DisplayID checksum invalid` 那串警告**不代表接着外接屏**,内置 eDP 的 EDID 也带 DisplayID 块。
+
+触摸板坏了、蓝牙鼠标是唯一指点设备,所以配了三层兜底:唤醒后 10 秒没起来就重启 bluetoothd;
+开机再解锁一次(电池若在"已 block"时耗光,systemd-rfkill 会把 block 状态恢复到下次开机);
+应急命令 `bt-fix` / `Meta+Shift+B`(polkit 放行 xpj 重启 bluetooth.service,快捷键下没终端输 sudo)。
+
+#### 蓝牙鼠标醒来连不上时的应急操作
+
+按顺序试,前一步不行再下一步:
+
+1. 按 `Meta+Shift+B`(跑 `bt-fix`,不需要鼠标)。右上角会弹通知,列出已连接的设备。
+2. 还没连上:把鼠标电源关掉再打开,再按一次 `Meta+Shift+B`。
+3. 快捷键没反应:笔记本键盘 `Ctrl+Alt+T` 开终端,敲 `bt-fix`。
+4. 仍不行:终端里 `rfkill list bluetooth` 看是否 `Soft blocked: yes`,是就 `rfkill unblock bluetooth`;
+   再 `systemctl restart bluetooth`(polkit 已放行,不用 sudo),然后 `bluetoothctl connect <MAC>`
+   (MAC 用 `bluetoothctl devices Paired` 查)。
+5. 抽屉里备一个 USB 有线鼠标,不依赖蓝牙,是最后的兜底。
+
+挂起后不需要关鼠标电源:电脑睡眠期间蓝牙是断电的,鼠标动了也唤醒不了电脑。
+代价是不能晃鼠标唤醒,要开盖或按电源键。
+
+休眠兜底:电池模式 `whenSleepingEnter = "standbyThenHibernate"`(plasma.nix)+
+`HibernateDelaySec = 2h` + `boot.resumeDevice`(nvme swap 分区)。只救"睡得浅",救不了卡死。
+zram 优先级更高,内存很满时休眠可能 `Error -12 creating image` 失败,systemd 会退回挂起。
 
 ### 面板跑到内置屏 / 主屏漂移(plasma.nix)
 
