@@ -79,13 +79,26 @@ cur_cli=$(sed -n 's/^ *claudeCodeVersion = "\(.*\)";/\1/p' "$cli_nix")
 cur_ext=$(sed -n 's/^ *claudeCodeVersion = "\(.*\)";/\1/p' "$ext_nix")
 
 new_cli=$(curl -fsS "$gcs/latest") || { echo "查 CLI 最新版本失败" >&2; exit 1; }
-new_ext=$(curl -fsS -X POST 'https://marketplace.visualstudio.com/_apis/public/gallery/extensionquery' \
+# 插件两个源都查,哪边先发就用哪边(上架时间不同步)。一边查不到不算失败,两边都查不到才退出。
+ver_market=$(curl -fsS -X POST 'https://marketplace.visualstudio.com/_apis/public/gallery/extensionquery' \
   -H 'Content-Type: application/json' -H 'Accept: application/json;api-version=3.0-preview.1' \
   -d '{"filters":[{"criteria":[{"filterType":7,"value":"anthropic.claude-code"}],"pageSize":1}],"flags":950}' \
-  | jq -r '.results[0].extensions[0].versions[0].version') || { echo "查插件最新版本失败" >&2; exit 1; }
+  | jq -r '.results[0].extensions[0].versions[0].version // empty') || ver_market=
+# 按平台查,保证返回的版本确实有 linux-x64 包
+ver_openvsx=$(curl -fsS https://open-vsx.org/api/Anthropic/claude-code/linux-x64 \
+  | jq -r '.version // empty') || ver_openvsx=
+echo "插件源: marketplace=${ver_market:-?} openvsx=${ver_openvsx:-?}"
+[ -n "$ver_market$ver_openvsx" ] || { echo "查插件最新版本失败(两个源都没返回)" >&2; exit 1; }
+
+# 取版本高的那个源;一样新时优先 marketplace(VS Code 的原生源)
+new_ext=$ver_market ext_source=marketplace
+if [ -z "$ver_market" ] || { [ -n "$ver_openvsx" ] && [ "$ver_openvsx" != "$ver_market" ] \
+  && [ "$(printf '%s\n%s\n' "$ver_market" "$ver_openvsx" | sort -V | tail -1)" = "$ver_openvsx" ]; }; then
+  new_ext=$ver_openvsx ext_source=openvsx
+fi
 
 echo "CLI:  $cur_cli -> $new_cli"
-echo "插件: $cur_ext -> $new_ext"
+echo "插件: $cur_ext -> $new_ext ($ext_source)"
 
 # 只往前升:上游返回的版本不比当前新就不动(不为对齐把某一边往回压)
 newer() { [ "$1" != "$2" ] && [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | tail -1)" = "$2" ]; }
@@ -108,24 +121,46 @@ if newer "$cur_cli" "$new_cli"; then
   changed=1
 fi
 if newer "$cur_ext" "$new_ext"; then
-  bump "$ext_nix" "$new_ext" \
-    "https://anthropic.gallery.vsassets.io/_apis/public/gallery/publisher/anthropic/extension/claude-code/$new_ext/assetbyname/Microsoft.VisualStudio.Services.VSIXPackage?targetPlatform=linux-x64" \
-    anthropic-claude-code.vsix || exit 1
+  case "$ext_source" in
+    openvsx) ext_url="https://open-vsx.org/api/Anthropic/claude-code/linux-x64/$new_ext/file/Anthropic.claude-code-$new_ext@linux-x64.vsix" ;;
+    *) ext_url="https://anthropic.gallery.vsassets.io/_apis/public/gallery/publisher/anthropic/extension/claude-code/$new_ext/assetbyname/Microsoft.VisualStudio.Services.VSIXPackage?targetPlatform=linux-x64" ;;
+  esac
+  bump "$ext_nix" "$new_ext" "$ext_url" anthropic-claude-code.vsix || exit 1
+  # 源和 hash 必须一起换,否则 URL 和 hash 对不上
+  sed -i -E "s|^( *claudeCodeExtSource = )\"[^\"]*\";|\1\"$ext_source\";|" "$ext_nix"
   changed=1
   changed_ext=1
 fi
 
 if [ "$changed" = 0 ]; then
   echo "两边都已是最新,不用 switch"
-  exit 0
+else
+  (cd "$repo" && home-manager switch --flake . -b backup -v) || { echo "home-manager switch 失败" >&2; exit 1; }
+  echo "终端 CLI: $(~/.nix-profile/bin/claude --version)"
+  echo "插件:     $(jq -r .version ~/.vscode/extensions/anthropic.claude-code/package.json)"
 fi
 
-(cd "$repo" && home-manager switch --flake . -b backup -v) || { echo "home-manager switch 失败" >&2; exit 1; }
+[ "$restart" = 1 ] || exit 0
 
-echo "终端 CLI: $(~/.nix-profile/bin/claude --version)"
-echo "插件:     $(jq -r .version ~/.vscode/extensions/anthropic.claude-code/package.json)"
-
-# 插件没换代就没必要重启 VS Code(CLI 只影响新开的终端会话)
-if [ "$restart" = 1 ] && [ "$changed_ext" = 1 ]; then
+# 要不要重启不看"这一次有没有改版本号",看 VS Code 里实际跑的是不是旧插件:
+# 版本号可能早被别的会话(比如 Claude 代跑的 --no-restart)改好并 switch 过,
+# 那样这一次什么都不改,但窗口里仍是旧插件(2026-10-17 就这么漏过一次)。
+# 判据是插件会话进程的 exe:extension host 换代前一直用启动时那份 store 路径,
+# 哪怕 switch 之后新开的会话也是旧二进制。
+if [ "$changed_ext" = 1 ]; then
   restart_vscode
+  exit $?
+fi
+want=$(readlink -f ~/.vscode/extensions/anthropic.claude-code/resources/native-binary/claude)
+stale=0 seen=0
+for p in $(pgrep -x claude || true); do
+  [ "$(ps -o comm= -p "$(ps -o ppid= -p "$p" | tr -d ' ')" 2>/dev/null)" = code ] || continue
+  seen=1
+  [ "$(readlink -f "/proc/$p/exe")" = "$want" ] || stale=1
+done
+if [ "$stale" = 1 ]; then
+  echo "VS Code 里还在跑旧版插件"
+  restart_vscode
+elif [ "$seen" = 0 ] && [ -n "$(vscode_main_pids)" ]; then
+  echo "VS Code 里没有开着的 Claude 会话,判断不了插件是否已换代;需要的话 cc-upgrade --restart-only"
 fi

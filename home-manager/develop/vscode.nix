@@ -33,22 +33,33 @@ let
   # 和 nix4vscode 的生成周期解耦(其余扩展照旧走 nix4vscode)。
   # 复用 nixpkgs 里现成的打包脚手架(autoPatchelfHook 负责 patch 那个 214MB 的
   # resources/native-binary/claude),只换 src 和版本号,drv 里没有编译,重建就是解压+patchelf。
-  # 升级手续:改下面的 version,再跑这行拿新 hash:
-  #   nix store prefetch-file --json --name anthropic-claude-code.vsix \
-  #     "https://anthropic.gallery.vsassets.io/_apis/public/gallery/publisher/anthropic/extension/claude-code/<version>/assetbyname/Microsoft.VisualStudio.Services.VSIXPackage?targetPlatform=linux-x64"
+  # 升级手续(cc-upgrade 自动做):改下面的 version 和 source,再对相应 URL 拿新 hash:
+  #   nix store prefetch-file --json --name anthropic-claude-code.vsix "<claudeCodeExtUrl 展开后的地址>"
+  # 查 Open VSX 当前最新版本:
+  #   curl -s https://open-vsx.org/api/Anthropic/claude-code/linux-x64 | jq -r .version
   # 查 marketplace 当前最新版本:
   #   curl -s -X POST 'https://marketplace.visualstudio.com/_apis/public/gallery/extensionquery' \
   #     -H 'Content-Type: application/json' -H 'Accept: application/json;api-version=3.0-preview.1' \
   #     -d '{"filters":[{"criteria":[{"filterType":7,"value":"anthropic.claude-code"}],"pageSize":1}],"flags":950}' \
   #     | python3 -c "import json,sys; print(json.load(sys.stdin)['results'][0]['extensions'][0]['versions'][0]['version'])"
-  claudeCodeVersion = "2.1.301";
+  claudeCodeVersion = "2.1.304";
+  # vsix 从哪个源拿:"marketplace" 或 "openvsx"。两边都是 Anthropic 官方发布,但上架时间
+  # 不同步(2026-10-17 实测 2.1.302 先上了 Open VSX,marketplace 还停在 2.1.301)。
+  # cc-upgrade 两边都查、取版本高的,连同这一行一起改;hash 随源而变,不能只改源不换 hash。
+  claudeCodeExtSource = "marketplace";
+  claudeCodeExtUrl =
+    {
+      marketplace = "https://anthropic.gallery.vsassets.io/_apis/public/gallery/publisher/anthropic/extension/claude-code/${claudeCodeVersion}/assetbyname/Microsoft.VisualStudio.Services.VSIXPackage?targetPlatform=linux-x64";
+      openvsx = "https://open-vsx.org/api/Anthropic/claude-code/linux-x64/${claudeCodeVersion}/file/Anthropic.claude-code-${claudeCodeVersion}@linux-x64.vsix";
+    }
+    .${claudeCodeExtSource};
   claudeCodeExt = pkgs.vscode-extensions.anthropic.claude-code.overrideAttrs (_: {
     version = claudeCodeVersion;
     src = pkgs.fetchurl {
       # 文件名必须以 .vsix 结尾:vscode-utils 的 unpackVsixSetupHook 靠扩展名触发解包
       name = "anthropic-claude-code.vsix";
-      url = "https://anthropic.gallery.vsassets.io/_apis/public/gallery/publisher/anthropic/extension/claude-code/${claudeCodeVersion}/assetbyname/Microsoft.VisualStudio.Services.VSIXPackage?targetPlatform=linux-x64";
-      hash = "sha256-CxcRJM0kr9GWqHDqklgwnfv7l+a42NUl19uzIl/sxQA=";
+      url = claudeCodeExtUrl;
+      hash = "sha256-JMT/DMsOWe1H0TY3RZ+46S2Yy8MLF2n/JQpzLgRJMj0=";
     };
   });
 
@@ -107,6 +118,7 @@ in
           "ms-python.vscode-pylance"
           "ms-python.python"
           "mk12.better-git-line-blame"
+          "robinreiche.csv-grid-editor"
         ]
         ++ [ claudeCodeExt ];
 

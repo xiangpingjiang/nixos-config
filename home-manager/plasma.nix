@@ -4,7 +4,41 @@
   ...
 }:
 
+let
+  # 面板跑到内置屏时把它拉回外接屏:外接屏 priority 1,其余依次往后排。
+  # 面板钉的是 screen = 0(priority 1 的输出),所以修优先级就是修面板,立即生效并写回
+  # kwinoutputconfig.json。按运行时查到的连接器名下发,不怕 DP-1/DP-2 漂移。
+  panelToExternal = pkgs.writeShellApplication {
+    name = "panel-to-external";
+    runtimeInputs = [
+      pkgs.kdePackages.libkscreen
+      pkgs.jq
+      pkgs.libnotify
+    ];
+    text = ''
+      outputs=$(kscreen-doctor -j)
+      ext=$(jq -r '[.outputs[] | select(.enabled and (.name | startswith("eDP") | not))][0].name // empty' <<<"$outputs")
+      if [ -z "$ext" ]; then
+        notify-send -a panel-to-external "面板" "没有启用中的外接屏" || true
+        echo "没有启用中的外接屏" >&2
+        exit 1
+      fi
+
+      args=("output.$ext.priority.1")
+      n=2
+      while read -r name; do
+        args+=("output.$name.priority.$n")
+        n=$((n + 1))
+      done < <(jq -r --arg ext "$ext" '.outputs[] | select(.enabled and .name != $ext) | .name' <<<"$outputs")
+
+      kscreen-doctor "''${args[@]}"
+      notify-send -a panel-to-external "面板" "主屏已设为 $ext" || true
+    '';
+  };
+in
 {
+  home.packages = [ panelToExternal ];
+
   programs.konsole = {
     enable = true;
     defaultProfile = "xpj";
@@ -45,13 +79,16 @@
       battery = {
         powerButtonAction = "showLogoutScreen";
         autoSuspend = {
-          action = "sleep";
-          idleTimeout = 600; # 10 分钟不动则休眠
+          # 空闲 10 分钟直接休眠(写盘后断电,零功耗),不走挂起。本机 s2idle 不可靠:
+          # 00:08.1 的假 PME 会打断挂起,回滚途中 amdgpu 偶尔卡死,醒着耗一夜
+          # (2026-10-10 到 10-18 四晚)。原先 sleep + standbyThenHibernate 要经过
+          # "挂起→醒来→休眠"两次转换,多一次就多一次卡死机会。AC 下仍是挂起。
+          action = "hibernate";
+          idleTimeout = 600;
         };
         whenLaptopLidClosed = "lockScreen";
         inhibitLidActionWhenExternalMonitorConnected = true;
-        # 先挂起,睡满 2h(configuration.nix 的 HibernateDelaySec)再写盘休眠,
-        # 防挂起睡不深时一夜耗光电池。AC 下没这个风险,仍是 standby。
+        # 只管手动点"睡眠"时走哪条路(这个选项不接受 hibernate),空闲自动那条见上面 autoSuspend。
         whenSleepingEnter = "standbyThenHibernate";
         dimDisplay = {
           enable = true;
@@ -96,8 +133,11 @@
         description = "localsend icon fix in task switcher";
         match = {
           window-class = {
-            value = "localsend_app";
+            # 1.18 起 Wayland app_id 带了反向域名前缀,旧的 "localsend_app" 不再命中
+            value = "org.localsend.localsend_app";
             type = "exact";
+            # 默认 true 匹配的是 "resourceName resourceClass" 整串,精确匹配会落空
+            match-whole = false;
           };
           window-types = [
             "normal"
@@ -190,6 +230,11 @@
       name = "修复蓝牙鼠标";
       key = "Meta+Shift+B";
       command = "/run/current-system/sw/bin/bt-fix";
+    };
+    hotkeys.commands.panel-to-external = {
+      name = "面板回到外接屏";
+      key = "Meta+Shift+P";
+      command = "${panelToExternal}/bin/panel-to-external";
     };
 
     shortcuts = {

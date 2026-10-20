@@ -120,7 +120,9 @@ CLI 那份是"上游追上就自动让路"的写法(`lib.versionAtLeast` 比一�
 #### 说「升级 Claude Code 到最新」时照这个做
 
 整套流程已打包成 `cc-upgrade`(`develop/cc-upgrade.sh`):查两边最新版 → 只往前升、改版本号和 hash →
-`home-manager switch` → 插件换了代就重启所有 VS Code 窗口(`--no-restart` 不重启,`--restart-only` 只重启)。
+`home-manager switch` → VS Code 里还跑着旧插件就重启所有窗口(`--no-restart` 不重启,`--restart-only` 只重启)。
+"旧插件"按插件会话进程的 `/proc/<pid>/exe` 判,不按"这次有没有改版本号"——版本号可能早被别的
+`--no-restart` 运行改好了,2026-10-17 就因此漏重启过一次。
 重启经 `systemd-run` 跑在 VS Code 进程树之外,SIGTERM 优雅退出后不带参数重开 `code`,窗口和未保存内容靠
 restoreWindows / hotExit 默认值恢复。**在 VS Code 里的 Claude 会话中跑它会把这个会话自己也重启掉**,
 所以由 Claude 代跑时用 `--no-restart`,重启留给用户。下面是它内部做的事,脚本坏了再手动照做:
@@ -149,19 +151,6 @@ curl -s -X POST 'https://marketplace.visualstudio.com/_apis/public/gallery/exten
 插件那份**必须手动钉**(已脱离 nix4vscode,见下一节)。CLI 那份严格说可以只 `nix flake update llm-agents`
 等上游追上,但"升级到最新"通常意味着现在就要用上,所以默认直接钉版本号 —— `lib.versionAtLeast`
 会在 llm-agents 追上之后自动让路,钉了不用记着撤。
-
-### Claude Desktop(develop/claude-desktop.nix)
-
-官方只发 Debian apt 仓库(Linux beta),这里直接 `fetchurl` 仓库池里的 `.deb`(现成 Electron 构建)+
-`autoPatchelfHook`,drv 里没有编译。**应用在 Linux 上不自更新**,升级只能改 `claudeDesktopVersion`
-和 hash,查版本的命令写在文件注释里。数据目录 `~/.config/Claude`。
-`chrome-sandbox` 的 setuid 位解包时丢掉(沙箱里 chmod 不了,Chromium 走 userns 不需要它)。
-**Cowork 分两侧配**:应用按 PATH 找 `qemu-system-x86_64`,由 wrapper 的 PATH 提供(HM 侧);
-固件和 virtiofsd 的路径在 app.asar 里写死成 Debian 位置(`/usr/share/OVMF/OVMF_CODE.fd`、
-`/usr/libexec/virtiofsd`),由 `configuration.nix` 的 `systemd.tmpfiles` 软链过去,
-加上 `kvm` 组和 `vhost_vsock` 模块(系统侧,要 nixos-rebuild)。.deb 自带的 virtiofsd 只在
-Ubuntu 22.04 上才被采用,别指望它。qemu 由 Go 写的 `cowork-linux-helper` 再校验一次
-(`main.validateQEMUPath`,逻辑没逆出来);要是它拒绝 store 路径,再往 `/usr/bin` 软链一份。
 
 ### 官方 API 连不上时的兜底入口(claude-ds,claude-code.nix)
 
@@ -1116,9 +1105,18 @@ WARNING → 内核立刻重试 `PM: suspend entry`,**之后日志断掉、再没
 下的内部 USB 设备**(Wi-Fi 走另一个桥 `00:02.2`)。那几晚没插 USB,只有蓝牙鼠标连着,
 所以挂起期间用 rfkill 给蓝牙断电(`bluetooth-sleep`,`StopWhenUnneeded` 让 ExecStop 成为唤醒钩子)。
 不用"只关 USB 唤醒":btusb 挂起时会按配对的 HID 设备自己把唤醒再打开。
+**光断蓝牙不够(2026-10-18)**:10-17 夜里蓝牙已 block,PME 照样打断挂起;第二次挂起睡着了,
+但 01:24 转休眠时又被打断,回滚途中卡死、镜像没写出(次日 `PM: Image not found (code -22)`)。
+而且醒着时它也每分钟报 4-5 次。所以又用 udev 规则把桥下 XHC0/XHC1/ACP 的 `power/wakeup` 关了
+(按 PCI ID 匹配)。判断有没有生效:挂起/休眠前后的 journal 里不再有 `Spurious native interrupt`
+紧跟 `early wake event detected`,以及休眠后能 `hibernation exit` 而不是重新开机。
+**这条规则 switch 完不会生效,要重启一次**:它只在设备 `add` 时执行。10-18 是开机(11:09)之后
+才 switch(11:20)的,到 10-20 那三个设备还是 `wakeup=enabled`,期间挂起又被打断了 7 次。
+核对:`cat /sys/bus/pci/devices/0000:63:00.{3,4,5}/power/wakeup` 应全是 `disabled`;
+不想重启就把 `disabled` 手动 `sudo tee` 进这三个文件。
 `DisplayID checksum invalid` 那串警告**不代表接着外接屏**,内置 eDP 的 EDID 也带 DisplayID 块。
 
-触摸板坏了、蓝牙鼠标是唯一指点设备,所以配了三层兜底:唤醒后 10 秒没起来就重启 bluetoothd;
+触摸板曾经消失过十天(见下一小节),那段时间蓝牙鼠标是唯一指点设备,所以配了三层兜底:唤醒后 10 秒没起来就重启 bluetoothd;
 开机再解锁一次(电池若在"已 block"时耗光,systemd-rfkill 会把 block 状态恢复到下次开机);
 应急命令 `bt-fix` / `Meta+Shift+B`(polkit 放行 xpj 重启 bluetooth.service,快捷键下没终端输 sudo)。
 
@@ -1133,6 +1131,46 @@ WARNING → 内核立刻重试 `PM: suspend entry`,**之后日志断掉、再没
    再 `systemctl restart bluetooth`(polkit 已放行,不用 sudo),然后 `bluetoothctl connect <MAC>`
    (MAC 用 `bluetoothctl devices Paired` 查)。
 5. 抽屉里备一个 USB 有线鼠标,不依赖蓝牙,是最后的兜底。
+
+#### 触摸板消失:恢复失败的后遗症,彻底断电才能复位
+
+触摸板是 `ELAN06FA`,挂在 AMD 的 I2C 控制器 `AMDI0010` 上(不在 `00:08.1` 桥下,和上面那条
+udev 规则无关)。10-07 到 10-16 连续 15 次开机**连 `AMDI0010` 都没被枚举**,10-18 自己回来了。
+逐次开机统计出来的经过:
+
+- 09-24、10-06、10-07 三次都是"合盖挂起 → 开盖恢复失败 → 短按电源键强关",恢复时日志一样:
+  `i2c_hid_acpi i2c-ELAN06FA:00: PM: failed to resume async: error -121`(触摸板不应答),
+  同一时刻 amdgpu 的 `vrr_transition` WARNING 和 spurious PME 也都在。所以它是上面那个
+  "s2idle 睡不干净"的又一个受害者,不是独立故障。
+- 前两次下次开机就好了,10-07 那次之后普通重启/关机都救不回来(内核 7.2.9 → 7.2.10 也没用)。
+  推断是触摸板或 EC 被卡在错乱状态,关机时电池仍给它们供电,BIOS 开机时就不上报这个 I2C 控制器。
+- 10-18 休眠失败、电池耗到 0(upower 记录 11:09 开机时 `0.000`),彻底断电之后它复位了。
+
+判断有没有:`grep ELAN06FA /proc/bus/input/devices`;查历史:`journalctl -b <n> -k | grep -c 'i2c_designware AMDI0010'`。
+**再坏了不用等电池放空**:长按电源键 15-30 秒,或者 BIOS 里有没有 "Disable Built-in Battery"
+一类选项(未核实这台有没有)。预防的根子还是让挂起别出错,即上面那条 udev 规则真的生效。
+别指望"挂起前 unbind i2c_hid、醒来再 bind"这类软件绕法:严重时连控制器都从 ACPI 里消失了。
+
+#### BIOS 升级:值得做,但暂缓(2026-10-20 决定)
+
+当前 `MKCN31WW`(2024-01),联想最新 `MKCN39WW`(2025-09-18),中间 33/35/36/37/38/39 六版。
+39 的 readme 里有一条 `Fine tune clear touchpad interrupt status bit`,和上面的触摸板问题可能相关
+(只有这一句,不保证治 `-121`);35/36/37 更新了 AMD PI;其余是二十多个 CVE。spurious PME 没被提到。
+查最新版不用翻官网,直接探文件名(40 及以上目前 404):
+
+```bash
+curl -s https://download.lenovo.com/consumer/mobiles/mkcn39ww.txt | iconv -f utf-16 -t utf-8
+curl -sI https://download.lenovo.com/consumer/mobiles/mkcn40ww.exe | head -1
+```
+
+**这台不能在 NixOS 里刷。** 包是 Insyde 老式 H2OFFT 格式(7z 自解压,里面是 `WinMKCN39WW.fd`
++ Windows 刷写程序),**没有 `bios.cap`**。网上那条 `fwupdtool install-blob` 的 Linux 刷法是
+16APH8 的,联想给它发的是带标准 capsule 的新格式包;`.fd` 里也抠不出合法 capsule(找到的
+GUID 只是代码里的引用)。LVFS 上也没有这台的 BIOS(`fwupdmgr get-updates` 只有 dbx)。
+
+要刷时的路线:Ventoy U 盘 + Hiren's BootCD PE,PE 里跑官方 `MKCN39WW.exe`。必须插电;刷完
+BIOS 设置可能回默认(记下 Secure Boot 关着等),systemd-boot 的启动项可能丢,F12 选
+"Linux Boot Manager",没有就用安装盘 `bootctl install`。刷到 39 之后多半不能降级。
 
 挂起后不需要关鼠标电源:电脑睡眠期间蓝牙是断电的,鼠标动了也唤醒不了电脑。
 代价是不能晃鼠标唤醒,要开盖或按电源键。
@@ -1149,6 +1187,8 @@ zram 优先级更高,内存很满时休眠可能 `Error -12 creating image` 失�
 # 当前这台外接屏的 uuid;换显示器后用 kscreen-doctor -o 重新查
 kscreen-doctor output.73ad35c6-a068-4f37-a2c0-99a1fedd7060.priority.1 output.eDP-1.priority.2
 ```
+
+已打包成 `panel-to-external`(快捷键 `Meta+Shift+P`,plasma.nix):运行时用 `kscreen-doctor -j` 找第一个启用中的非 eDP 输出设成 priority 1,其余依次排后,所以连接器名漂了、换了显示器都不用改。
 
 诊断用 `kscreen-doctor -o` 看各输出的 priority 是否唯一。
 

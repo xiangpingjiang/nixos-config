@@ -169,7 +169,6 @@ in
     ./netloc.nix
     ./develop/vscode.nix
     ./develop/claude-code.nix
-    ./develop/claude-desktop.nix
     ./develop/chrome-devtools-mcp.nix
     ./develop/codex.nix
     ./develop/pi.nix
@@ -200,6 +199,7 @@ in
   home.packages = with pkgs; [
     gitleaks
     kubectl
+    google-cloud-sdk # gcloud / gsutil / bq
     kind
     scrcpy
     android-tools

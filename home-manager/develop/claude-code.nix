@@ -194,7 +194,7 @@ let
   #   nix store prefetch-file --json --name claude \
   #     "https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases/<version>/linux-x64/claude"
   # 查上游当前最新版本:curl -s "https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases/latest"
-  claudeCodeVersion = "2.1.301";
+  claudeCodeVersion = "2.1.304";
   claudeCodeUpstream = inputs.llm-agents.packages.${pkgs.stdenv.hostPlatform.system}.claude-code;
   claudeCodePkg =
     if lib.versionAtLeast claudeCodeUpstream.version claudeCodeVersion then
@@ -206,7 +206,7 @@ let
         version = claudeCodeVersion;
         src = pkgs.fetchurl {
           url = "https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases/${claudeCodeVersion}/linux-x64/claude";
-          hash = "sha256-vBqtmYLHtZx9iJ/5JZXWHPRuCm6uB0y1UdkyqYm80iI=";
+          hash = "sha256-6g8TV4RjFhmnpAnQcyLs7JZPnMT9N3UI7Ruj8UHyeRI=";
         };
       });
   # 跨窗口列出活跃的 Claude Code 会话(zellij 的 cc tab 循环跑的就是它,见 zellij/dev.kdl)。

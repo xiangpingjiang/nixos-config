@@ -180,6 +180,18 @@ in
     };
   };
 
+  # 关掉 00:08.1 桥下设备的系统唤醒(2026-10-18,上面那条 rfkill 不够)。
+  # 10-17 夜里蓝牙已被 block,同一个 `PME: Spurious native interrupt` 照样出现:
+  # 先打断 23:24 的挂起(第二次挂起倒是睡着了),01:24 转休眠时又把冻结打断,
+  # 回滚路径上 amdgpu 卡死,没写出镜像(次日 `PM: Image not found`),机器醒着耗光电池。
+  # 10-17 凌晨还见过它连续十几次打断休眠、每分钟重试一次。所以中断源不只蓝牙,
+  # 桥下能唤醒的另外三个都关:XHC0(1022:15b9)、XHC1(15ba)、ACP 音频(15e2)。
+  # 按 ID 而不是总线号匹配,BIOS 改了枚举顺序也不会失效。
+  # 代价:USB 键盘/鼠标不能唤醒,开盖和电源键不受影响(走 EC/ACPI,不经过这个桥)。
+  services.udev.extraRules = ''
+    ACTION=="add", SUBSYSTEM=="pci", ATTR{vendor}=="0x1022", ATTR{device}=="0x15b9|0x15ba|0x15e2", ATTR{power/wakeup}="disabled"
+  '';
+
   # 开机也解一次锁。systemd-rfkill 会在关机时保存、开机时恢复 rfkill 状态,
   # 而电池恰恰可能在"挂起中、蓝牙被 block"时耗光 —— 不解锁的话下次开机蓝牙是关的,
   # 触摸板又坏着,就没有鼠标可用了。
@@ -287,21 +299,8 @@ in
     extraGroups = [
       "networkmanager"
       "wheel"
-      # Claude Desktop 的 Cowork 要求(/dev/vhost-vsock 官方说只对 kvm 组开放;本机 udev 给的是 0666,
-      # 但别依赖这个)。见 home-manager/develop/claude-desktop.nix
-      "kvm"
     ];
   };
-
-  # Claude Desktop 的 Cowork 用 QEMU 起虚拟机,固件和 virtiofsd 的路径在应用里写死成 Debian 的位置:
-  #   固件:/usr/share/OVMF/OVMF_CODE_4M.fd 或 OVMF_CODE.fd(VARS 模板由 CODE→VARS 替换推出)
-  #   virtiofsd:/usr/libexec/virtiofsd 或 /usr/bin/virtiofsd(.deb 自带的那份只在 Ubuntu 22.04 上才用)
-  # qemu-system-x86_64 是按 PATH 找的,由 HM 那边的 wrapper 提供,不需要放进 /usr。
-  boot.kernelModules = [ "vhost_vsock" ];
-  systemd.tmpfiles.rules = [
-    "L+ /usr/share/OVMF - - - - ${pkgs.OVMF.fd}/FV"
-    "L+ /usr/libexec/virtiofsd - - - - ${pkgs.virtiofsd}/bin/virtiofsd"
-  ];
 
   # Allow unfree packages
   nixpkgs.config.allowUnfree = true;
