@@ -15,13 +15,13 @@ let
   #   nix store prefetch-file https://github.com/t8y2/dbx/releases/download/packages-v<版本>/dbx-cli-linux-x64-gnu.tar.gz
   #   nix store prefetch-file https://github.com/t8y2/dbx/releases/download/v<版本>/DBX_<版本>_amd64.deb
   # 查最新:gh release list -R t8y2/dbx --exclude-pre-releases | grep -E 'packages-v|^v'
-  dbxCliVersion = "0.4.115";
-  # desktop 钉在 0.6.38:0.6.39 起 Linux 主窗口加了 "transparent": true(src-tauri/tauri.linux.conf.json,
-  # 上游 commit 786ccad),KDE Wayland 下一交互就整窗狂闪。上游已在 6cd2dc1 改成默认不透明
-  # (DBX_LINUX_FLOATING_FRAME=1 才开),但 v0.6.40 之后才提交、还没进 release。
-  # 升级前核对:新 tag 里 tauri.linux.conf.json 的 transparent 不再是 true,或该 commit 已包含在内:
+  dbxCliVersion = "0.4.127";
+  # 0.6.39 起 Linux 主窗口加了 "transparent": true(src-tauri/tauri.linux.conf.json,
+  # 上游 commit 786ccad),KDE Wayland 下一交互就整窗狂闪,曾因此钉在 0.6.38。上游在 6cd2dc1
+  # 改成默认不透明(DBX_LINUX_FLOATING_FRAME=1 才开),0.6.51 已包含(2026-10-23 核对为 ahead)。
+  # 升级前仍核对一次,防止上游回退:
   #   gh api repos/t8y2/dbx/compare/6cd2dc1c9...v<版本> --jq .status   # ahead/identical 才行
-  dbxDesktopVersion = "0.6.38";
+  dbxDesktopVersion = "0.6.51";
 
   # CLI 只依赖 glibc(openssl/fontconfig 都静态链进去了),autoPatchelfHook 改个 interpreter 就行。
   # 二进制保持原名 dbx:官方 skill(skills/dbx/SKILL.md)里的命令都是 `dbx ...`,
@@ -31,7 +31,7 @@ let
     version = dbxCliVersion;
     src = pkgs.fetchurl {
       url = "https://github.com/t8y2/dbx/releases/download/packages-v${dbxCliVersion}/dbx-cli-linux-x64-gnu.tar.gz";
-      hash = "sha256-/Mdpi48sFTHosta8d96PtiRJvR5aIYi4yzM8SNMwjS0=";
+      hash = "sha256-02qQ592RV7fKjHBPGq1jT+NhWZW4xkPaA6OpAwQRhPQ=";
     };
     sourceRoot = ".";
     nativeBuildInputs = [ pkgs.autoPatchelfHook ];
@@ -72,7 +72,7 @@ let
     version = dbxDesktopVersion;
     src = pkgs.fetchurl {
       url = "https://github.com/t8y2/dbx/releases/download/v${dbxDesktopVersion}/DBX_${dbxDesktopVersion}_amd64.deb";
-      hash = "sha256-nN464rRZypzlsa+eBsh2TUOXC5IkppIxLmvAaD5Ra9U=";
+      hash = "sha256-AP1T4iW9f5vE9Q58POX590V07AoKD5WBj8A+6QQ0wjM=";
     };
     nativeBuildInputs = with pkgs; [
       dpkg

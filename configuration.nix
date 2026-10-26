@@ -188,9 +188,30 @@ in
   # 桥下能唤醒的另外三个都关:XHC0(1022:15b9)、XHC1(15ba)、ACP 音频(15e2)。
   # 按 ID 而不是总线号匹配,BIOS 改了枚举顺序也不会失效。
   # 代价:USB 键盘/鼠标不能唤醒,开盖和电源键不受影响(走 EC/ACPI,不经过这个桥)。
+  # 必须同时匹配 bind(2026-10-23):只写 add 时 XHC 两个关掉了,ACP 却仍是 enabled ——
+  # snd_pci_ps 在 probe 里自己把唤醒打开,而 probe 晚于 add 事件。bind 事件在 probe 之后发出,
+  # 这时再写才压得住。10-22 夜里的休眠就是在只剩它开着的情况下被 PME 打断的。
+  #
+  # 曾有第二条把 HD Audio 控制器(63:00.6,1022:15e3)钉成 power/control=on,2026-10-25 撤掉:
+  # 它是 spurious PME 的来源(每次休眠退回后每 12.6 秒一次),但规则重启后不生效 ——
+  # snd_hda_intel 的 probe 后半段是异步的,bind 事件之后才 pm_runtime_allow,把 on 改回 auto。
+  # 而且没必要了:休眠改成 HibernateMode=shutdown(见下)之后,写完镜像就断电,不再检查唤醒事件,
+  # PME 打不断它。
   services.udev.extraRules = ''
-    ACTION=="add", SUBSYSTEM=="pci", ATTR{vendor}=="0x1022", ATTR{device}=="0x15b9|0x15ba|0x15e2", ATTR{power/wakeup}="disabled"
+    ACTION=="add|bind", SUBSYSTEM=="pci", ATTR{vendor}=="0x1022", ATTR{device}=="0x15b9|0x15ba|0x15e2", ATTR{power/wakeup}="disabled"
   '';
+
+  # 不加载 SD 读卡器驱动(2026-10-23):它才是休眠一直失败的直接原因,上面那条 udev 规则不是。
+  # Realtek 读卡器(rtsx_pci_sdmmc,挂在 00:02.3 下)每次设备恢复都会做一次插卡检测,
+  # 同时登记一个唤醒事件(唤醒源 mmc0)。休眠流程里拍完快照要先把设备恢复回来才能写盘,
+  # 这时读卡器就登记一次;到断电前检查"有没有待处理的唤醒事件"时撞上它,于是放弃,
+  # 报 `Failed to put system to sleep ... Device or resource busy`。
+  # 10-22 夜里 44 次休眠全部这样失败,机器黑着屏醒了一整夜(约 4W,7.5 小时从 63% 掉到 10%);
+  # mmc0 的 active_count 正好等于睡眠次数。开了 pm_debug_messages 后日志直接写出
+  # `PM: Wakeup pending, aborting suspend` / `PM: active wakeup source: mmc0`。
+  # 之前归给 00:08.1 那个 spurious PME 的休眠失败,当时没开调试日志,多半也是它。
+  # 代价:SD 卡槽不能用。要用时 `sudo modprobe rtsx_pci_sdmmc`,用完 `sudo rmmod` 掉再睡。
+  boot.blacklistedKernelModules = [ "rtsx_pci_sdmmc" ];
 
   # 开机也解一次锁。systemd-rfkill 会在关机时保存、开机时恢复 rfkill 状态,
   # 而电池恰恰可能在"挂起中、蓝牙被 block"时耗光 —— 不解锁的话下次开机蓝牙是关的,
@@ -206,6 +227,27 @@ in
       Type = "oneshot";
       ExecStart = "${bluetoothUnblock}/bin/bluetooth-unblock";
     };
+  };
+
+  # 电池保养模式(2026-10-24):机器大多插着电用,常年停在 100% 老化最快。
+  # ideapad_acpi 给 BAT0 挂了 charge_types,三档 Fast / Standard / Long_Life,
+  # Long_Life 即联想的保养模式,充到约 80% 停。出门要满电就临时切回去(不用重启):
+  #   echo Standard | sudo tee /sys/class/power_supply/BAT0/charge_types
+  # 不用 udev 规则:这个属性是 ideapad_acpi 绑定后以 battery hook 补挂上去的,
+  # BAT0 的 add 事件那一刻可能还不存在,所以开机后等它出现再写。
+  systemd.services.battery-long-life = {
+    description = "开机时把电池充电模式设为 Long_Life(保养模式)";
+    wantedBy = [ "multi-user.target" ];
+    serviceConfig.Type = "oneshot";
+    script = ''
+      f=/sys/class/power_supply/BAT0/charge_types
+      for _ in $(seq 30); do
+        [ -w "$f" ] && { echo Long_Life > "$f"; cat "$f"; exit 0; }
+        sleep 1
+      done
+      echo "$f 30 秒内没出现,ideapad_acpi 没加载?" >&2
+      exit 1
+    '';
   };
 
   # 和 systemPackages.nix 里那份列表合并
@@ -230,9 +272,37 @@ in
   # 睡满 HibernateDelaySec 后写盘关机。只救得了"睡着了但睡得浅",救不了彻底卡死
   # (卡死时 RTC 闹钟也不会被处理)。
   # 注意 zram:休眠要先把内存压到 image_size 以下,优先级更高的 zram 换出等于没腾出物理内存,
-  # 内存吃得很满时可能 `Error -12 creating image` 失败;systemd 失败后会回到挂起,不会丢东西。
+  # 内存吃得很满时可能 `Error -12 creating image` 失败(2026-10-23 实测撞上过,当时已用 17G)。
+  # 只有 suspend-then-hibernate 那条路失败后会回到挂起;空闲自动休眠(plasma.nix 的 autoSuspend)
+  # 是直接 hibernate,失败了就原样醒着,10 分钟后再试 —— 不丢东西,但会一直耗电。
   boot.resumeDevice = "/dev/disk/by-uuid/59506173-06a5-402e-9060-39a2b835927e";
   systemd.sleep.settings.Sleep.HibernateDelaySec = "2h";
+
+  # 休眠写完镜像后直接断电,不走 ACPI S4(2026-10-25)。默认 "platform shutdown" 先试 platform,
+  # 而 platform 在断电前最后检查一次唤醒事件,有就回滚(内核 hibernate.c 的 power_down():
+  # 只有 HIBERNATION_PLATFORM 分支会 `rolling back`,shutdown 分支直接 kernel_power_off)。
+  # 回滚在这台机器上是致命的:amdgpu sdma0 超时、Mode2 reset 失败,GPU 挂死,机器半死不活醒着耗光电池
+  # (10-23 23:25、10-24 01:57、10-25 01:35 三次,最后一次之后冻结用户态失败、挂起每两分钟重试一次,
+  # 04:01 电量耗尽)。打断它的东西不止一个:先是 HDA 的 spurious PME,修掉之后 10-25 那次
+  # 调试日志写的是 `last active wakeup source: PNP0C0C:00` —— 电源键。合着盖没人按,是固件在
+  # EC 重启时自己发的电源键通知(s2idle 醒来时 libinput 也会收到一个没人按的 Power Button 事件)。
+  # 与其一个个堵唤醒源,不如让这个检查不存在:镜像已经完整写盘,断电方式对恢复没有影响。
+  # 代价:S5 下不能用 USB/网卡唤醒休眠中的机器(本来也没用)。
+  # 别拿 `cat /sys/power/disk` 核对:systemd 只在休眠那一刻才写入,平时一直显示 [platform]。
+  systemd.sleep.settings.Sleep.HibernateMode = "shutdown";
+
+  # 睡眠调试日志常开(2026-10-24)。读卡器 blacklist 之后休眠仍被打断过一次:10-23 23:25
+  # 镜像已经写完,断电前 `Wakeup event detected during hibernation, rolling back`,
+  # 但当时没开调试日志,不知道是谁 —— 而运行时 echo 进去的开关重启就复位,事后补不回来。
+  # 开着之后失败时会多打一行 `PM: active wakeup source: <名字>`,平时几乎没有额外输出。
+  # 那次回滚之后 amdgpu 的 sdma0 环超时、Mode2 reset 失败,GPU 再没恢复(黑屏、按电源键没反应,
+  # 只能强关)。所以休眠被打断的代价不只是耗电,而是整台机器废掉。
+  boot.kernelParams = [ "pm_debug_messages" ];
+
+  # 放开 SysRq(默认 16 只允许 sync)。GPU 挂死时 KWin 跟着卡住,电源键交给 powerdevil 处理也没用,
+  # 内核却还活着(logind 照样记 `Power key pressed`)。这时用 Alt+SysRq+R E I S U B 逐个按,
+  # 先同步、卸载再重启,比长按电源键强关安全。本机 SysRq 在 Fn+S 或 PrtSc 上,不同键盘位置不一样。
+  boot.kernel.sysctl."kernel.sysrq" = 1;
 
   # Use latest kernel.
   boot.kernelPackages = pkgs.linuxPackages_latest; # 取决于 flake.lock 锁定的 nixpkgs 版本 和 https://search.nixos.org/packages?channel=unstable 无关

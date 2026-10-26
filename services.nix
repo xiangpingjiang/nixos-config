@@ -13,8 +13,23 @@ let
   # 周期从 10 分钟放宽到 30 分钟:备份对象是一个手工编辑的 KeePassXC 库(21KB),
   # 10 分钟的 RPO 远超实际需要,代价却是每天 432 次 WebDAV 往返——2026-09-06 那次
   # 13 小时的 prune 就是这么攒出来的(详见下面 restic-prune 的注释)。
-  # 配合 --skip-if-unchanged,现在文件没改就连快照都不会生成。
+  # 文件没改时整个任务被下面的 ExecCondition 跳过,连 rclone 都不起。
   backupInterval = 30;
+  kpDir = "/home/xpj/Documents/sync/kp/";
+
+  # 目录内容(文件名 + 内容)的哈希,ExecCondition 和 ExecStartPost 共用。
+  # 每个仓库各记一份:某个仓库这次失败了,下一轮它自己会重试,不受另外两个成功的影响。
+  # 条件阶段把哈希先写到 .pending,备份成功(ExecStartPost 只在 ExecStart 成功后跑)才转正;
+  # 不在 post 阶段重算,否则备份途中文件被改,记下的是没备上的新内容,这次修改就永远漏了。
+  kpHashDir = "/var/lib/restic-kp-hash";
+  kpChanged = pkgs.writeShellScript "restic-kp-changed" ''
+    h=$(cd ${kpDir} && find . -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum)
+    [ "$h" = "$(cat ${kpHashDir}/"$1" 2>/dev/null)" ] && exit 1
+    printf '%s' "$h" > ${kpHashDir}/"$1".pending
+  '';
+  kpRecord = pkgs.writeShellScript "restic-kp-record" ''
+    mv ${kpHashDir}/"$1".pending ${kpHashDir}/"$1"
+  '';
   resticRepos = {
     webdav-backup = {
       remote = "kp_cst";
@@ -35,6 +50,25 @@ let
   };
 in
 {
+  # 内容没变就跳过备份。restic 自己的 --skip-if-unchanged 靠不住:它比的是整棵树,
+  # 父目录的元数据变了也算变,2026-10-22 一天 36 次备份里只有 12 次跳过(Files 0 changed、
+  # Dirs 2 changed,照样 saved)。ExecCondition 返回 1 是"跳过",单元不会变红。
+  # 写在 imports 里是因为本文件已经有 systemd.services.<名字> = ...,不能再整体赋值 systemd.services。
+  imports = [
+    {
+      systemd.services = lib.mapAttrs' (
+        name: _:
+        lib.nameValuePair "restic-backups-${name}" {
+          serviceConfig = {
+            StateDirectory = "restic-kp-hash";
+            ExecCondition = "${kpChanged} ${name}";
+            ExecStartPost = "${kpRecord} ${name}";
+          };
+        }
+      ) resticRepos;
+    }
+  ];
+
   # 2026-09-20 到 09-30 在新加坡期间关过:那边是纯 DNS sinkhole、IP 层不封,直连就够。
   # 关掉的起因是 fake-ip 把公司 VPN 自己的传输层打死
   # (openvpn 把 globalvpn.rockflow.ai 解析成 fake-ip 198.18.0.12,
@@ -89,12 +123,11 @@ in
         # 每次备份都会写一个新的 snapshot 文件 + 一个 index + 若干 tree blob,
         # 哪怕那个 21KB 的 kdbx 一个字节没变——2026-09-06 清理时,三个仓库里
         # 一万多个快照对应的有效数据只有 50 KiB 左右,其余全是这类元数据。
-        # 已验证生效(2026-10-01):三个仓库日志都是 `skipped creating snapshot`,
-        # 只有 kdbx 真改过的那次才 `saved`。父目录的 `Dirs: 2 changed` 没有破坏判定。
-        # 哪天又变回每次都 saved,就改用 ExecCondition 比对 kdbx 自身的哈希。
+        # 10-01 验证时有效,到 10-22 大多数又变回 saved(父目录元数据也参与比较),
+        # 所以主判据改成了上面的 ExecCondition;这项留着兜底,不起冲突。
         "--skip-if-unchanged"
       ];
-      paths = [ "/home/xpj/Documents/sync/kp/" ];
+      paths = [ kpDir ];
       repository = "rclone:${remote}:/kp/";
       # 每 backupInterval 分钟一次,从 startMinute 起算
       # (:00 :30 / :10 :40 / :20 :50)

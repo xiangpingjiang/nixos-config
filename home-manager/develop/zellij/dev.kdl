@@ -8,8 +8,22 @@ layout {
             plugin location="zellij:status-bar"
         }
     }
+    // 上下两排、每排 4 个等宽窗格。手动拆出来的窗格边界容易错位,zellij 找不到
+    // 贯通的边界就没法整体缩放(日志里是 `Ran out of room for spans`),窗口变大后
+    // tab 会卡在旧宽度、右边留空,所以这里写死成对齐的网格。
     tab name="dev" {
-        pane
+        pane split_direction="vertical" {
+            pane cwd="/home/xpj/Projects/FlowAI/Mintopia/console-new"
+            pane cwd="/home/xpj/Projects/FlowAI/Mintopia/super-tradebot"
+            pane cwd="/home/xpj/Projects/FlowAI/Mintopia/shared-runtime"
+            pane cwd="/home/xpj/Projects/FlowAI/Mintopia/strategy"
+        }
+        pane split_direction="vertical" {
+            pane cwd="/home/xpj/Projects/FlowAI/Mintopia/bobby-open-api"
+            pane cwd="/home/xpj/Projects/FlowAI/rockbot"
+            pane cwd="/home/xpj/Projects/FlowAI/Mintopia/mcp/rockflow/rockflow-mcp"
+            pane cwd="/home/xpj/Projects/FlowAI/Mintopia/strategy"
+        }
     }
     tab name="nixos" {
         pane cwd="/home/xpj/Projects/nixos-config"

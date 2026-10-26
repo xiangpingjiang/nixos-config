@@ -76,10 +76,10 @@ desktop 0.5.91 vs 0.6.39)。
 `skills/` 源码 —— skill 描述的是 CLI 命令,所以**升 CLI 时同步改这个 tag**。
 升级命令写在 home.nix 那段注释里。
 
-**desktop 钉在 0.6.38,升级前先查透明窗口。** 0.6.39 给 Linux 加了 `src-tauri/tauri.linux.conf.json`
+**desktop 升级前先查透明窗口**(曾因此钉在 0.6.38,2026-10-23 升到 0.6.51)。0.6.39 给 Linux 加了 `src-tauri/tauri.linux.conf.json`
 (`"transparent": true`,上游 commit `786ccad`),在本机 KDE Wayland 下界面一交互就整窗狂闪、CPU 100%
 (上游 issue #11736 / #11046 是同一类)。上游 `6cd2dc1` 已改成默认不透明、`DBX_LINUX_FLOATING_FRAME=1`
-才开,但它晚于 v0.6.40 提交。升级前跑 `gh api repos/t8y2/dbx/compare/6cd2dc1c9...v<版本> --jq .status`,
+才开,0.6.51 已包含。以后升级前仍跑 `gh api repos/t8y2/dbx/compare/6cd2dc1c9...v<版本> --jq .status`,
 返回 `ahead`/`identical` 才能升。
 
 排查时走过的两条弯路,别再试:`WEBKIT_DISABLE_COMPOSITING_MODE=1` / `GDK_BACKEND=x11` 不解决
@@ -554,10 +554,13 @@ received recently`,而封禁窗口里的删除请求**返回成功却不生效**
 #### 备份侧的两项预防
 
 周期从 10 分钟放宽到 30 分钟(每天 432 次往返 → 144 次),并加上
-`--skip-if-unchanged`——内容和父快照一致就不生成新快照。**已验证生效**(2026-10-01):
-三个仓库的日志都是 `skipped creating snapshot`,只有 kdbx 真改过那次才 `saved`,
-父目录的 `Dirs: 2 changed` 没有破坏判定。哪天又变回每次都 saved,就改用 `ExecCondition`
-比对 kdbx 自身的哈希。
+`--skip-if-unchanged`——内容和父快照一致就不生成新快照。10-01 验证有效,**到 10-22 失效**:
+一天 36 次里只有 12 次跳过,日志是 `Files: 0 changed`、`Dirs: 2 changed` 照样 `saved`
+(它比整棵树,父目录元数据也算)。所以主判据改成了 `ExecCondition` 比对备份目录内容的哈希
+(`services.nix` 的 `kpChanged`/`kpRecord`,状态在 `/var/lib/restic-kp-hash/<任务名>`):
+没变就整个任务跳过(单元显示 skipped 而不是 failed),连 rclone 都不起;
+`--skip-if-unchanged` 留着兜底。哈希先写 `.pending`,`ExecStartPost`(备份成功才跑)再转正,
+所以某个仓库失败了下一轮会自己重试。
 
 ### 跨窗口查看活跃会话(cc-sessions,claude-code.nix)
 
@@ -1110,10 +1113,36 @@ WARNING → 内核立刻重试 `PM: suspend entry`,**之后日志断掉、再没
 而且醒着时它也每分钟报 4-5 次。所以又用 udev 规则把桥下 XHC0/XHC1/ACP 的 `power/wakeup` 关了
 (按 PCI ID 匹配)。判断有没有生效:挂起/休眠前后的 journal 里不再有 `Spurious native interrupt`
 紧跟 `early wake event detected`,以及休眠后能 `hibernation exit` 而不是重新开机。
-**这条规则 switch 完不会生效,要重启一次**:它只在设备 `add` 时执行。10-18 是开机(11:09)之后
+**规则必须匹配 `add|bind`,只写 `add` 压不住 ACP**(2026-10-23):`snd_pci_ps` 在 probe 里自己把唤醒打开,
+probe 晚于 add 事件,于是重启后 XHC 两个是 disabled、ACP(`63:00.5`)仍是 enabled,
+10-22 夜里休眠照样被 PME 打断(`Failed to put system to sleep ... Device or resource busy`)。
+bind 事件在 probe 之后发出,这时再写才算数。
+**这条规则 switch 完不会生效,要重启一次**:它只在设备 `add`/`bind` 时执行。10-18 是开机(11:09)之后
 才 switch(11:20)的,到 10-20 那三个设备还是 `wakeup=enabled`,期间挂起又被打断了 7 次。
 核对:`cat /sys/bus/pci/devices/0000:63:00.{3,4,5}/power/wakeup` 应全是 `disabled`;
 不想重启就把 `disabled` 手动 `sudo tee` 进这三个文件。
+**休眠 `Device or resource busy` 的真凶是 SD 读卡器,不是 PME(2026-10-23)**:udev 规则全部生效之后,
+10-22 夜里 44 次休眠仍然全部失败,机器醒了一整夜(约 4W)。开 `pm_debug_messages` 之后日志直接写出
+`PM: active wakeup source: mmc0` —— `rtsx_pci_sdmmc` 每次设备恢复都登记一个唤醒事件,
+而休眠拍完快照要先把设备恢复回来才能写盘,断电前的检查就撞上了它。现已 blacklist(configuration.nix)。
+以后睡眠再失败,**先开调试日志再下结论**:`echo 1 | sudo tee /sys/power/pm_debug_messages`(重启复位),
+然后 `grep -E 'Wakeup pending|active wakeup source'`;再看 `/sys/class/wakeup/*/active_count`
+有没有哪个计数正好等于睡眠次数。spurious PME 醒着时也在刷屏,和失败挨得近不代表就是它。
+内存很满时还有另一种失败,`Error -12 creating image`(zram 优先级高于盘上 swap),和这条无关。
+**spurious PME 的来源是 HD Audio 控制器 `63:00.6`(1022:15e3)(2026-10-24 定位)**。
+它只在**休眠尝试退回之后**才开始每 12.6 秒发一次(普通挂起醒来不会),于是形成固定链条:
+第一次自动休眠 `Error -12` 失败退回 → PME 开始刷 → 10 分钟后第二次休眠写完镜像、断电前撞上 PME →
+`Wakeup event detected during hibernation, rolling back` → amdgpu `sdma0 timeout` / `Mode2 reset failed`,
+GPU 挂死、黑屏、电源键无响应,只能强关(10-23 23:25 和 10-24 01:57 两次一模一样)。
+定位方法可复用:`echo core > /sys/power/pm_test; echo disk > /sys/power/state` 模拟休眠
+(走到生成镜像就退回,不写盘不断电,安全),复现出 PME 后把桥下 runtime suspend 的设备逐个
+`power/control=on`,哪个让 PME 归零就是哪个。它的 `power/wakeup` 本来就是 disabled,关唤醒没用。
+**但堵唤醒源这条路走不完,最终改成 `HibernateMode=shutdown`(2026-10-25)**。PME 修掉的当晚,休眠照样在写完
+镜像后回滚,调试日志写的是 `last active wakeup source: PNP0C0C:00` —— 合着盖没人按的电源键(固件在 EC 重启时自己发的通知)。
+回滚后 GPU 照旧挂死,之后冻结用户态失败、挂起每两分钟重试一次,04:01 电量耗尽。回滚只存在于内核 `power_down()` 的
+platform 分支(断电前最后查一次 `pm_wakeup_pending`),shutdown 分支写完镜像直接 `kernel_power_off`,所以任何唤醒源都打不断了。
+15e3 那条 `power/control=on` 的 udev 规则随之撤掉(本来也不生效:snd_hda_intel 异步 probe 在 bind 之后把它改回 auto)。
+`/sys/power/disk` 平时显示 `[platform]` 是正常的,systemd 只在休眠那一刻写入。GPU 挂死时用 Alt+SysRq+REISUB 重启(`kernel.sysrq = 1`)。
 `DisplayID checksum invalid` 那串警告**不代表接着外接屏**,内置 eDP 的 EDID 也带 DisplayID 块。
 
 触摸板曾经消失过十天(见下一小节),那段时间蓝牙鼠标是唯一指点设备,所以配了三层兜底:唤醒后 10 秒没起来就重启 bluetoothd;

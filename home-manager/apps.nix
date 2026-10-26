@@ -98,4 +98,42 @@
       };
     };
   };
+
+  # 默认程序由这里声明,~/.config/mimeapps.list 变成指向 store 的只读链接。
+  # 起因(2026-10-21):飞书把自己写成了 http/https/text/html 的默认程序,在飞书里点链接
+  # → xdg-open → 又回到飞书,永远到不了 chromium。声明式管理之后,哪个应用再抢默认,
+  # 下一次 switch 就改回来。
+  # 代价是整个文件归这里管:应用自己注册的 scheme handler 不会再自动生效,新增的要写进来。
+  # clash-verge / mongodb-compass 原来也在文件里,但 .desktop 已经不存在,没有搬过来。
+  #
+  # force:应用会把链接换成普通文件(2026-10-23 是 Claude Code 注册 claude-cli handler 时写的),
+  # 靠 -b backup 的话,第二次撞上时旧的 .backup 还在,整个 switch 直接中止。
+  # 应用写进去的东西要么已在下面声明、要么正是要压掉的,备份无保留价值,直接覆盖。
+  xdg.configFile."mimeapps.list".force = true;
+  xdg.mimeApps = {
+    enable = true;
+    defaultApplications = {
+      "x-scheme-handler/http" = "chromium-browser.desktop";
+      "x-scheme-handler/https" = "chromium-browser.desktop";
+      "text/html" = "chromium-browser.desktop";
+
+      "application/json" = "code.desktop";
+      "application/x-docbook+xml" = "code.desktop";
+      "application/x-yaml" = "code.desktop";
+      "text/markdown" = "code.desktop";
+      "text/plain" = "code.desktop";
+      "text/x-cmake" = "code.desktop";
+
+      "x-scheme-handler/tg" = "org.telegram.desktop.desktop";
+      "x-scheme-handler/tonsite" = "org.telegram.desktop.desktop";
+      "x-scheme-handler/lxmusic" = "lx-music-desktop.desktop";
+      "x-scheme-handler/insomnia" = "insomnia.desktop";
+      # 这两个 .desktop 在 ~/.local/share/applications,是各自程序运行时写的,不归 Nix 管
+      "x-scheme-handler/claude-cli" = "claude-code-url-handler.desktop";
+      "x-scheme-handler/ccswitch" = "cc-switch-handler.desktop";
+      # 用 Nix 包自带的 dbx-desktop.desktop(Exec 走 PATH,升级不失效)。~/.local/share/applications
+      # 下那几个 *dbx*handler.desktop 是各版本运行时自己写的,Exec 钉死旧 store 路径或 AppImage,别用
+      "x-scheme-handler/dbx" = "dbx-desktop.desktop";
+    };
+  };
 }

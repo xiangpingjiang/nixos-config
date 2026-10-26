@@ -77,7 +77,7 @@
     # 钉 CLI 的 release tag:skill 文档描述的是 CLI 的命令,两者必须同版本(理由同 lark-skills)。
     # 升级手续:改这里的 tag,同时改 home-manager/home.nix 里 dbxCliVersion(同一个版本号)。
     dbx = {
-      url = "github:t8y2/dbx/packages-v0.4.115";
+      url = "github:t8y2/dbx/packages-v0.4.127";
       flake = false;
     };
   };

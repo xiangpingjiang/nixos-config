@@ -79,16 +79,19 @@ in
       battery = {
         powerButtonAction = "showLogoutScreen";
         autoSuspend = {
-          # 空闲 10 分钟直接休眠(写盘后断电,零功耗),不走挂起。本机 s2idle 不可靠:
-          # 00:08.1 的假 PME 会打断挂起,回滚途中 amdgpu 偶尔卡死,醒着耗一夜
-          # (2026-10-10 到 10-18 四晚)。原先 sleep + standbyThenHibernate 要经过
-          # "挂起→醒来→休眠"两次转换,多一次就多一次卡死机会。AC 下仍是挂起。
-          action = "hibernate";
+          # 空闲 10 分钟挂起,睡满 HibernateDelaySec(2h,configuration.nix)再转休眠 ——
+          # 走的是下面 whenSleepingEnter 的 standbyThenHibernate。
+          # 2026-10-18 到 10-25 曾改成直接 hibernate,理由是当时 s2idle 被假 PME 打断。
+          # 那些唤醒源后来都处理掉了(蓝牙 rfkill、桥下 wakeup 规则、读卡器 blacklist),
+          # 而直接休眠反倒成了主要故障点:每次都要压出十几 G 内存,满了就 `Error -12`,
+          # 写完被打断就回滚、amdgpu 挂死耗光电池(10-23、10-24、10-25 三晚)。
+          # 现在挂起覆盖短时间离开,休眠只在 2h 后兜底,且 HibernateMode=shutdown 不会回滚。
+          action = "sleep";
           idleTimeout = 600;
         };
         whenLaptopLidClosed = "lockScreen";
         inhibitLidActionWhenExternalMonitorConnected = true;
-        # 只管手动点"睡眠"时走哪条路(这个选项不接受 hibernate),空闲自动那条见上面 autoSuspend。
+        # 手动点"睡眠"和上面空闲自动挂起都走这条路(这个选项不接受 hibernate)。
         whenSleepingEnter = "standbyThenHibernate";
         dimDisplay = {
           enable = true;

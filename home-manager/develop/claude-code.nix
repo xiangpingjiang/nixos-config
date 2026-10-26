@@ -194,7 +194,7 @@ let
   #   nix store prefetch-file --json --name claude \
   #     "https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases/<version>/linux-x64/claude"
   # 查上游当前最新版本:curl -s "https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases/latest"
-  claudeCodeVersion = "2.1.304";
+  claudeCodeVersion = "2.1.310";
   claudeCodeUpstream = inputs.llm-agents.packages.${pkgs.stdenv.hostPlatform.system}.claude-code;
   claudeCodePkg =
     if lib.versionAtLeast claudeCodeUpstream.version claudeCodeVersion then
@@ -206,7 +206,7 @@ let
         version = claudeCodeVersion;
         src = pkgs.fetchurl {
           url = "https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases/${claudeCodeVersion}/linux-x64/claude";
-          hash = "sha256-6g8TV4RjFhmnpAnQcyLs7JZPnMT9N3UI7Ruj8UHyeRI=";
+          hash = "sha256-tzZ2QwrxL5cxanmLg3H4HWQPkKWL3LjzzlaoNbtH31Y=";
         };
       });
   # 跨窗口列出活跃的 Claude Code 会话(zellij 的 cc tab 循环跑的就是它,见 zellij/dev.kdl)。
@@ -418,6 +418,47 @@ in
         未验证的部分明确标出来。
     '';
 
+    # haiku 那一档靠"主模型记得传 model 参数"落不了地:2026-10-24 用 tare 查 30 天,
+    # haiku 一共 4 次请求;22 个 Explore 子代理全跑在 sonnet/opus 上(内置 Explore
+    # 默认用主会话的模型)。所以把 haiku 钉进 agent 定义里,委派时选类型就行。
+    #
+    # 同名的用户级 Explore 会覆盖内置那个并保留自己的 model(文档 sub-agents 页
+    # "Built-in subagents")。下面几项是照着内置版对齐的:内置 Explore 不加载 CLAUDE.md、
+    # 不能改文件;自定义版这两条都要自己写,否则 omitClaudeMd 缺省会把整份全局
+    # CLAUDE.md 塞进每个搜索子代理,disallowedTools 缺省则继承 Edit/Write。
+    agents.Explore = ''
+      ---
+      name: Explore
+      description: 只读的代码库搜索/探索代理(跑在 haiku 上)。需要在多个文件、目录或命名约定里查找代码、只要结论不要文件全文时使用。调用时说明搜索力度:quick / medium / very thorough。
+      model: haiku
+      disallowedTools: Agent, Edit, Write, NotebookEdit
+      omitClaudeMd: true
+      ---
+
+      你是只读的搜索代理:在代码库里定位文件、符号、配置和调用关系,不修改任何东西。
+      Bash 只用来跑只读命令(grep、find、sed -n、git log/show 之类),不要写文件、装包或改状态。
+
+      - 按委派方要求的力度搜:quick 只查最可能的位置;very thorough 要覆盖多种命名和多个目录。
+      - 读大文件先 grep -n 定位,再 sed -n 取相关段落,不要整文件读。
+      - 报告写给委派方:先给结论,再列证据(文件路径:行号 + 关键一两行),
+        没找到就明说没找到、查过哪些地方。
+    '';
+
+    agents.haiku-worker = ''
+      ---
+      name: haiku-worker
+      description: 跑在 haiku 上的执行代理:按明确清单做批量小改动、跑命令并汇总输出、格式转换。不需要判断、步骤能在 prompt 里一次写清时使用。
+      model: haiku
+      ---
+
+      你按委派方给的清单执行,不自行扩大范围,也不替委派方做设计决定。
+      你看不到委派方的对话,prompt 里写的就是全部上下文。
+
+      - 清单里有歧义或执行中遇到清单没覆盖的情况,停下来在报告里说明,不要猜。
+      - 跑命令时只把关键输出(结果、报错的那一两行)写进报告,不要整段贴日志。
+      - 报告列出做了什么、改了哪些文件、哪一步失败了。
+    '';
+
     context = ''
       # 模型分工策略(把活儿分到对的模型和用量池)
 
@@ -428,8 +469,8 @@ in
 
       四档:
 
-      - **haiku** —— 不用判断,照做即可:代码/文件搜索(配 Explore agent)、
-        批量小改动、跑命令并汇总输出、格式转换、按明确清单执行的操作。
+      - **haiku** —— 不用判断,照做即可:代码/文件搜索用 `Explore`(已钉在 haiku 上),
+        批量小改动、跑命令并汇总输出、格式转换、按明确清单执行的操作用 `haiku-worker`。
       - **sonnet** —— 方案已定,只需一般的编码判断:普通编码修改、写测试、常见 bug 修复、
         资料调研与总结;**也包括量大但方案已定的整块活儿**(跨多个文件的改动、成体系的调研)。
         这类活儿 token 大头花在读和写而不是想,难的部分由主会话在委派前想清楚、写进 prompt。
@@ -517,7 +558,10 @@ in
       # 这里写 settings 键而不是 env:env 版优先级最高,会让 `/autocompact` / `--autocompact`
       # 临时放宽这条路失效。`/autocompact` 会尝试写回 settings.json,但那是 store 里的只读文件,
       # 所以临时放宽请用 `claude --autocompact 800k`。
-      autoCompactWindow = 300000;
+      # 2026-10-24 从 300K 降到 200K:30 天复查,300K 生效了(峰值 266K),但最贵的会话
+      # 整段在 150K-266K 之间来回,每次请求都重发这么多;降到 200K 让长会话的重发量和
+      # 空闲后的 cache 重写再少约四分之一,代价是 compact 更频繁、早期细节丢得更多。
+      autoCompactWindow = 200000;
       # Bash 输出超过这个字数就落盘,Claude 只拿到 2000 字预览 + 文件路径,需要时再去读。
       # 默认 30000;同一天的 3194 次 Bash 输出里 p95 是 9.6K 字,超过 10K 的约 150 次,
       # 这批大输出占了注入总量的一成多,而且在长会话里会被每次请求重发。需要 v2.1.261+。

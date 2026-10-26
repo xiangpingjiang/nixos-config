@@ -41,6 +41,8 @@
     starship = {
       enable = true;
       enableZshIntegration = true;
+      # kubernetes 模块默认是关的;不写 detect_* 就在所有目录显示当前 context
+      settings.kubernetes.disabled = false;
     };
 
     java = {
@@ -60,4 +62,11 @@
   };
 
   xdg.configFile."zellij/layouts/dev.kdl".text = builtins.readFile ./zellij/dev.kdl;
+
+  # 进 devenv 目录时 direnv 默认打印整串 `+AR +AS +NIX_CFLAGS_COMPILE ...`,
+  # zellij 窗格一窄就折成半屏;只保留 loading 提示,不列变量差异。
+  xdg.configFile."direnv/direnv.toml".text = ''
+    [global]
+    hide_env_diff = true
+  '';
 }

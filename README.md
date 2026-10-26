@@ -125,6 +125,16 @@ how processes are matched to transcripts.
 
 Hook changes only take effect in newly started Claude Code sessions.
 
+## Battery charge mode
+
+Boots into `Long_Life` (Lenovo conservation mode, stops at ~80%) via the
+`battery-long-life` service in `configuration.nix`. Need a full charge before
+going out:
+
+    echo Standard | sudo tee /sys/class/power_supply/BAT0/charge_types
+
+Back to conservation mode: `echo Long_Life | sudo tee ...` (same path), or just reboot.
+
 ## Troubleshooting
 
 Panel moved to the built-in screen / wrong primary display (KWin saved duplicate
